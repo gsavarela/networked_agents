@@ -8,6 +8,7 @@
 
     Zhang, et al. 2018
 '''
+from operator import itemgetter
 from functools import lru_cache
 from copy import deepcopy
 from operator import itemgetter
@@ -31,19 +32,6 @@ def softmax(x):
 def replace(x, pos, elem): x[pos] = elem; return x
 
 
-def metropolis_weights_matrix(adjacency):
-    n = adjacency.shape[0]
-    degree = np.sum(adjacency, axis=1) - 1
-    consensus = np.zeros_like(adjacency) 
-    for i in range(n):
-        for j in range(i + 1, n):
-            if adjacency[i, j] > 0:
-                consensus[i, j] = (1 + max(degree[i], degree[j])) ** -1
-            consensus[j, i] = consensus[i, j] # symmetrical
-        consensus[i, i] = 1 - (consensus[i, :].sum())
-                
-    return consensus
-
 class DistributedActorCritic(object):
 
     def __init__(self, env):
@@ -56,7 +44,6 @@ class DistributedActorCritic(object):
         self.n_agents = env.n_agents
         self.n_shared = env.n_shared
         self.n_private = env.n_private
-        self.C = metropolis_weights_matrix(env.adjacency)
         assert env.n_actions == 2
 
         # Parameters
@@ -110,7 +97,7 @@ class DistributedActorCritic(object):
         '''
         self.next_mu = (1 - self.alpha) * self.mu + self.alpha * rewards
 
-    def update(self, state, actions, reward, next_state, next_actions):
+    def update(self, state, actions, reward, next_state, next_actions, C):
         # Common knowledge at timestep-t
         shared, private = state
         next_shared, next_private = next_state
@@ -147,7 +134,7 @@ class DistributedActorCritic(object):
         # self.w = np.einsum('ij, ijk -> jk', self.C, weights)
         # self.w = self.C @ weights
         for i in range(self.n_agents):
-            self.w[i, :] = self.C[i, :] @ weights
+            self.w[i, :] = C[i, :] @ weights
         self.n_steps += 1
         self.mu = self.next_mu
 

@@ -37,10 +37,14 @@ def main(n_runs, n_processors, n_steps, n_episodes):
     sys.stdout.write(str(results_path))
 
     globally_averaged_return, q_values = zip(*results)
+    with (results_path / 'globally_averaged_return.json').open('w') as f:
+        json.dump(globally_averaged_return, f)
     globally_averaged_plot(globally_averaged_return, results_path)
-    q_values_plot(q_values)
+    with (results_path / 'q_values.json').open('w') as f:
+        json.dump(q_values, f)
+    q_values_plot(q_values, results_path)
     return results, str(results_path)
 
 if __name__ == '__main__':
-    results, results_path = main(2, 1, 10000, 1)
+    results, results_path = main(5, 1, 15000, 1)
 

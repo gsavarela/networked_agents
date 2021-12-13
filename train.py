@@ -47,11 +47,11 @@ def train(n_steps, n_episodes, seed):
                     first = False
 
 
-                next_state, next_rewards, done = gen.send(actions)
+                next_state, next_rewards, done, consensus = gen.send(actions)
                 dac.update_mu(next_rewards)
 
                 next_actions = dac.act(next_state[-1])
-                q_values = dac.update(state, actions, next_rewards, next_state, next_actions)
+                q_values = dac.update(state, actions, next_rewards, next_state, next_actions, consensus)
                 globally_averaged_return.append(np.mean(dac.mu))
                 agents_q_values.append(q_values)
                 state, actions = next_state, next_actions
