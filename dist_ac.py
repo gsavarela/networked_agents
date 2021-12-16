@@ -41,7 +41,7 @@ class DistributedActorCritic(object):
         self.env = env
         self.n_states = env.n_states
         self.n_actions = env.n_actions
-        self.n_agents = env.n_agents
+        self.n_agents = env.n_nodes
         self.n_shared = env.n_shared
         self.n_private = env.n_private
         assert env.n_actions == 2

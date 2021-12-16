@@ -9,6 +9,10 @@ from train import train
 from plots import globally_averaged_plot, q_values_plot
 
 def fn(args): return train(*args)
+# helps transform a list of dictionaries into a pair of lists
+def gn(adict, pos): return (adict['centralized'][pos], adict['distributed'][pos])
+def unwrap(alist, pos): return zip(*[gn(elem, pos) for elem in alist])
+
 def main(n_runs, n_processors, n_steps, n_episodes):
 
 
@@ -36,13 +40,17 @@ def main(n_runs, n_processors, n_steps, n_episodes):
     results_path.mkdir(exist_ok=True)
     sys.stdout.write(str(results_path))
 
-    globally_averaged_return, q_values = zip(*results)
-    with (results_path / 'globally_averaged_return.json').open('w') as f:
-        json.dump(globally_averaged_return, f)
-    globally_averaged_plot(globally_averaged_return, results_path)
-    with (results_path / 'q_values.json').open('w') as f:
-        json.dump(q_values, f)
-    q_values_plot(q_values, results_path)
+    
+    # get globally averaged return
+    with (results_path / 'results.json').open('w') as f:
+        json.dump(results, f)
+
+    centralized_J, decentralized_J = unwrap(results, 0) 
+    globally_averaged_plot(centralized_J, decentralized_J, results_path)
+
+    centralized_Q, decentralized_Q = unwrap(results, 1) 
+    q_values_plot(centralized_Q, decentralized_Q, results_path)
+
     return results, str(results_path)
 
 if __name__ == '__main__':

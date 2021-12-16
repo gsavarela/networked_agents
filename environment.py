@@ -39,25 +39,25 @@ class Environment(object):
     def __init__(self,
                  n_states=20,
                  n_actions=2,
-                 n_agents=20,
+                 n_nodes=20,
                  n_shared=10,
                  n_private=5):
 
         # connectivity_ratio = 2 * n_edges / (n_nodes)*(n_nodes - 1) 
-        # n_nodes = n_agents
-        # default: 4 / n_agents <--> n_edges = 2 * (n_nodes - 1)
+        # n_nodes = n_nodes
+        # default: 4 / n_nodes <--> n_edges = 2 * (n_nodes - 1)
         self.n_states = n_states
         self.n_actions = n_actions
-        self.n_agents = n_agents
+        self.n_nodes = n_nodes
         self.n_shared = n_shared
         self.n_private = n_private
-        self.n_edges = n_agents - 1 
+        self.n_edges = n_nodes - 1 
 
         # Transitions & Shared set of features phi(s,a).
         self.transitions = {}
         self.shared = {}
 
-        n_action_space = np.power(n_actions, n_agents)
+        n_action_space = np.power(n_actions, n_nodes)
         probabilities = []
         phis = [] 
         avg_rewards = []
@@ -70,22 +70,22 @@ class Environment(object):
             phis.append(shared)
 
             # 2. Each agent has an individual average reward.
-            avg_rewards.append(uniform(low=0, high=4, size=(n_states, n_agents)))
+            avg_rewards.append(uniform(low=0, high=4, size=(n_states, n_nodes)))
 
         # [n_states, n_actions, n_state]
         self.transitions = np.stack(probabilities, axis=1)
         # [n_states, n_actions, n_shared]
         self.shared = np.stack(phis, axis=1)
-        #[n_states, n_actions, n_agents]
+        #[n_states, n_actions, n_nodes]
         self.average_rewards = np.stack(avg_rewards, axis=1)
         # 4. Private set of features q(s, a_i)
-        #[n_states, n_actions, n_agents, n_private]
-        self.private = uniform(size=(n_states, n_actions, n_agents, n_private))
+        #[n_states, n_actions, n_nodes, n_private]
+        self.private = uniform(size=(n_states, n_actions, n_nodes, n_private))
 
         action_schema = np.arange(n_actions)
 
         # 5. Builds a list with every possible edge. 
-        self.edge_list = [(i, j) for i in range(n_agents - 1) for j in range(i + 1, n_agents)]
+        self.edge_list = [(i, j) for i in range(n_nodes - 1) for j in range(i + 1, n_nodes)]
         self.reset()
 
     def reset(self):
@@ -102,13 +102,13 @@ class Environment(object):
         return self.shared[self.state, b2d(list(actions)), :]
 
     def get_private(self):
-        ii  = np.arange(self.n_agents)
+        ii  = np.arange(self.n_nodes)
         return self.private[self.state, :, ii, :]
 
     def get_rewards(self, actions):
-        #[n_states, n_actions, n_agents]
+        #[n_states, n_actions, n_nodes]
         r = self.average_rewards[self.state, b2d(list(actions)), :]
-        u = uniform(low=-0.5, high=0.5, size=self.n_agents)
+        u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
         return r + u
 
     def next_step(self, actions):
@@ -133,7 +133,7 @@ class Environment(object):
         edges += [(edge[-1], edge[0]) for edge in edges]
 
         # include main diagonal
-        edges += [(k, k) for k in range(self.n_agents)]
+        edges += [(k, k) for k in range(self.n_nodes)]
 
         # unique
         edges = sorted(sorted(set(edges), key=itemgetter(1)), key=itemgetter(0))
@@ -157,7 +157,7 @@ class Environment(object):
                 actions = yield self.get_features()
                 first = False
             else:
-                actions = yield self.get_features(actions), self.get_rewards(actions), done, self.get_consensus()
+                actions = yield self.get_features(actions), self.get_rewards(actions), done
             self.next_step(actions)
         return 0 
 
@@ -166,14 +166,14 @@ if __name__ == '__main__':
     np.random.seed(42)
     n_states=10
     n_actions=2
-    n_agents=5
+    n_nodes=5
     n_shared=5
     n_private=3
 
     env = Environment(
             n_states=n_states,
             n_actions=n_actions,
-            n_agents=n_agents,
+            n_nodes=n_nodes,
             n_shared=n_shared,
             n_private=n_private
     )
@@ -181,10 +181,10 @@ if __name__ == '__main__':
     print(f'Graph-{env.n_step}:')
     print(f'{env.adjacency}')
     # for actions [0, 0] and state 2 --> a probability array
-    agents = tuple([i for i in range(n_agents)])
-    actions = np.zeros(n_agents, dtype=np.int32)
+    agents = tuple([i for i in range(n_nodes)])
+    actions = np.zeros(n_nodes, dtype=np.int32)
     state = env.state
-    n_action_schema = 2 ** n_agents
+    n_action_schema = 2 ** n_nodes
     print(f'current state: {state}')
     print(env.transitions.shape) 
     assert env.transitions.shape == (n_states, n_action_schema, n_states)
