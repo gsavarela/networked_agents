@@ -44,13 +44,16 @@ class DistributedActorCritic(object):
         self.n_agents = env.n_nodes
         self.n_shared = env.n_shared
         self.n_private = env.n_private
+        self.seed = env.seed
         assert env.n_actions == 2
 
         # Parameters
+        np.random.seed(self.seed)
         self.mu = np.zeros(self.n_agents)
         self.next_mu = np.zeros(self.n_agents)
-        self.w = np.random.randn(self.n_agents, self.n_shared)
-        self.theta = np.random.randn(self.n_agents, self.n_private)
+
+        self.w = np.ones((self.n_agents, self.n_shared)) * (1/ self.n_shared)
+        self.theta = np.ones((self.n_agents, self.n_private)) * (1/ self.n_private)
         self.reset()
 
     @property 
@@ -66,6 +69,7 @@ class DistributedActorCritic(object):
     def _beta(self, n_steps): return np.power((n_steps + 1), -0.85)
 
     def reset(self):
+        np.random.seed(self.seed)
         self.n_steps = 0
 
     def act(self, private):
@@ -108,15 +112,13 @@ class DistributedActorCritic(object):
         mu = self.mu
         q_values = [] # output
         # 3. Loop through agents' decisions.
-        weights = []
         for i in range(self.n_agents):
             # 3.1 Compute time-difference delta
             delta = reward[i] - mu[i] + \
                     self.q(next_shared, i) - self.q(shared, i)
-
             # 3.2 Critic step
             # [n_shared,]
-            weights.append(self.w[i, :] + alpha * (delta * dq))
+            self.w[i, :] += alpha * (delta * dq)
 
             # 3.3 Actor step
             adv = self.advantage(shared, private, actions, i)
@@ -125,16 +127,8 @@ class DistributedActorCritic(object):
 
             q_values.append(self.q(shared, i))
 
-        # 4. Consensus step: broadcast weights
-        # Send weights to the network
-        # get weights from neighbors
-        weights = np.stack(weights)
-
-        # forms to test
-        # self.w = np.einsum('ij, ijk -> jk', self.C, weights)
-        # self.w = self.C @ weights
-        for i in range(self.n_agents):
-            self.w[i, :] = C[i, :] @ weights
+        # Consensus step.
+        self.w = C @ self.w
         self.n_steps += 1
         self.mu = self.next_mu
 
@@ -190,56 +184,6 @@ class DistributedActorCritic(object):
     def advantage(self, shared, private, actions, i):
         return self.q(shared, i) - self.v(private, actions, i)
 
-
-   #  '''        debugging        '''
-   #  def get_actor(self):
-   #      return self._get_params([w.tolist() for w in self.ws])
-
-   #  def get_critic(self):
-   #      return self._get_params([theta.tolist() for theta in self.thetas])
-
-   #  def get_probabilities(self, state):
-   #      probs = []
-   #      for i in range(self.n_agents):
-   #          probs.append(self.policy(state, i).tolist())
-   #      return self._get_params(probs)
-
-   #  def get_values(self, state, actions):
-   #      values = []
-   #      for i in range(self.n_agents):
-   #          values.append(float(self.v(state, actions, i)))
-
-   #      return self._get_params(values)
-
-   #  def get_qs(self, state, actions):
-   #      qs = [float(self.q(state, actions, i)) for i in range(self.n_agents)]
-   #      return self._get_params(qs)
-
-   #  def get_advantages(self, state, actions):
-   #      advs = [float(self.advantage(state, actions, i)) for i in range(self.n_agents)]
-   #      return self._get_params(advs)
-
-   #  def _get_params(self, params):
-   #      return {tl: par for tl, par in zip(self.tl_ids, params)}
-
-   #  """ Serialization """
-   #  # Serializes the object's copy -- sets get_wave to null.
-   #  def save_checkpoint(self, chkpt_dir_path, chkpt_num):
-   #      class_name = type(self).__name__.lower()
-   #      file_path = Path(chkpt_dir_path) / chkpt_num / f'{class_name}.chkpt'  
-   #      file_path.parent.mkdir(exist_ok=True)
-   #      with open(file_path, mode='wb') as f:
-   #          dill.dump(self, f)
-
-   #  # deserializes object -- except for get_wave.
-   #  @classmethod
-   #  def load_checkpoint(cls, chkpt_dir_path, chkpt_num):
-   #      class_name = cls.__name__.lower()
-   #      file_path = Path(chkpt_dir_path) / str(chkpt_num) / f'{class_name}.chkpt'  
-   #      with file_path.open(mode='rb') as f:
-   #          new_instance = dill.load(f)
-
-   #      return new_instance
 
 if __name__ == '__main__':
     n_states=3

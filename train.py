@@ -30,7 +30,7 @@ def train(n_steps, n_episodes, seed):
     n_nodes = 5
     n_shared = 10
     n_private = 5
-    np.random.seed(seed)
+    is_time_variable_graph = False
 
     # Instanciate
     env = Environment(
@@ -38,17 +38,22 @@ def train(n_steps, n_episodes, seed):
         n_actions=n_actions,
         n_nodes=n_nodes,
         n_shared=n_shared,
-        n_private=n_private
+        n_private=n_private,
+        seed=seed
     )
 
+
+    np.random.seed(seed)
+    consensus = env.get_consensus()
     results = {}
     for distributed in (True, False):
-
         # system of agents
         agent = get_agent(distributed)(env)
 
         globally_averaged_return = []
         agents_q_values = []
+
+
         for episode in trange(n_episodes, position=0):
 
             gen = env.loop(n_steps)
@@ -67,7 +72,11 @@ def train(n_steps, n_episodes, seed):
 
                     next_actions = agent.act(next_state[-1])
                     tr = [state, actions, next_rewards, next_state, next_actions]
-                    if distributed: tr.append(env.get_consensus())
+                    if distributed:
+                        if is_time_variable_graph:
+                            tr.append(env.get_consensus())
+                        else:
+                            tr.append(consensus)
                 
                     q_values = agent.update(*tr)
                     globally_averaged_return.append(np.mean(agent.mu))

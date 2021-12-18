@@ -15,6 +15,10 @@ from numpy.random import uniform
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
+# from consensus import metropolis_weights_matrix
+from consensus import laplacian_weights_matrix
+from consensus import adjacency_matrix
+
 def softmax(x):
     e_x = np.exp(x)
     return e_x / np.sum(e_x, keepdims=True, axis=-1)
@@ -22,18 +26,7 @@ def softmax(x):
 # x is a list of zeros and ones.
 def b2d(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
 
-def metropolis_weights_matrix(adjacency):
-    adj = np.array(adjacency)
-    degree = np.sum(adj, axis=1) - 1
-    consensus = np.zeros_like(adjacency, dtype=float) 
-    for i in range(adj.shape[0]):
-        for j in range(i + 1, adj.shape[0]):
-            if adjacency[i, j] > 0:
-                consensus[i, j] = 1 / (1 + max(degree[i], degree[j]))
-                consensus[j, i] = consensus[i, j] # symmetrical
-        consensus[i, i] = 1 - (consensus[i, :].sum())
-                
-    return consensus
+
 
 class Environment(object):
     def __init__(self,
@@ -41,7 +34,8 @@ class Environment(object):
                  n_actions=2,
                  n_nodes=20,
                  n_shared=10,
-                 n_private=5):
+                 n_private=5,
+                 seed=0):
 
         # connectivity_ratio = 2 * n_edges / (n_nodes)*(n_nodes - 1) 
         # n_nodes = n_nodes
@@ -51,7 +45,8 @@ class Environment(object):
         self.n_nodes = n_nodes
         self.n_shared = n_shared
         self.n_private = n_private
-        self.n_edges = n_nodes - 1 
+        self.n_edges = 2 * (n_nodes - 1)
+        self.seed = seed
 
         # Transitions & Shared set of features phi(s,a).
         self.transitions = {}
@@ -61,6 +56,8 @@ class Environment(object):
         probabilities = []
         phis = [] 
         avg_rewards = []
+        
+        np.random.seed(seed)
         for _ in range(n_action_space):
             u = np.random.rand(n_states, n_states) + 1e-5 # ensure ergodicity
             p = softmax(u)
@@ -89,6 +86,8 @@ class Environment(object):
         self.reset()
 
     def reset(self):
+        # for the same seed starts from the same.
+        np.random.seed(self.seed) 
         self.state = np.random.choice(self.n_states)
         self.n_step = 0
 
@@ -102,6 +101,7 @@ class Environment(object):
         return self.shared[self.state, b2d(list(actions)), :]
 
     def get_private(self):
+        #[n_states, n_actions, n_nodes, n_private]
         ii  = np.arange(self.n_nodes)
         return self.private[self.state, :, ii, :]
 
@@ -125,27 +125,12 @@ class Environment(object):
 
     @lru_cache(maxsize=1)
     def _adjacency(self, n_step):
-        # random edge selection
-        edge_ids = np.random.choice(len(self.edge_list), size=self.n_edges, replace=False)
-        edges = [edge for k, edge in enumerate(self.edge_list) if k in edge_ids]
+        return adjacency_matrix(self.n_nodes, self.n_edges)
 
-        # make simetrical
-        edges += [(edge[-1], edge[0]) for edge in edges]
-
-        # include main diagonal
-        edges += [(k, k) for k in range(self.n_nodes)]
-
-        # unique
-        edges = sorted(sorted(set(edges), key=itemgetter(1)), key=itemgetter(0))
-        data = np.ones(len(edges))
-        adj = csr_matrix((data, zip(*edges)), dtype=int).todense()
-        return adj
-        
     def get_consensus(self):
         adj = self.adjacency
-        mwe = metropolis_weights_matrix(adj)
-
-        return mwe
+        lwe = laplacian_weights_matrix(adj)
+        return lwe
         
 
     def loop(self, n_steps):

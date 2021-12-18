@@ -42,13 +42,15 @@ class ActorCritic(object):
         self.n_nodes = env.n_nodes
         self.n_shared = env.n_shared
         self.n_private = env.n_private
+        self.seed = env.seed
         assert env.n_actions == 2
 
         # Parameters
         self.mu = np.zeros(1)
         self.next_mu = np.zeros(1)
-        self.w = np.random.randn(self.n_shared)
-        self.theta = np.random.randn(self.n_nodes, self.n_private)
+
+        self.w = np.ones(self.n_shared) * (1 / self.n_shared)
+        self.theta = np.ones((self.n_nodes, self.n_private)) * (1 / self.n_private)
         self.reset()
 
     @property 
@@ -64,6 +66,7 @@ class ActorCritic(object):
     def _beta(self, n_steps): return np.power((n_steps + 1), -0.85)
 
     def reset(self):
+        np.random.seed(self.seed)
         self.n_steps = 0
 
     def act(self, private):
