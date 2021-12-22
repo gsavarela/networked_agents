@@ -91,9 +91,8 @@ class ActorCritic(object):
         alpha = self.alpha
         beta = self.beta
         mu = self.mu
-        q_values = [] # output
         # 3. Loop through agents' decisions.
-        weights = []
+        advantages = []
         # 3.1 Compute time-difference delta
         delta = np.mean(reward) - mu + \
                 self.q(next_shared) - self.q(shared)
@@ -107,12 +106,10 @@ class ActorCritic(object):
             ksi = self.grad_policy(private, actions, i)     # [n_shared]
             self.theta[i, :] += (beta * delta * ksi) # [n_shared]
 
-        q_values.append(self.q(shared))
-
         self.n_steps += 1
         self.mu = self.next_mu
 
-        return q_values
+        return advantages, float(delta)
 
     def q(self, shared):
         '''Q-function'''
@@ -137,6 +134,9 @@ class ActorCritic(object):
         probabilities = self.policy(private, i)
         ai = actions[i]
         return private[i, ai, :] - np.sum(probabilities @ private[i, :])
+
+    def get_q(self, shared):
+        return self.q(shared)
 
 
 if __name__ == '__main__':

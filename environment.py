@@ -24,7 +24,8 @@ def softmax(x):
     return e_x / np.sum(e_x, keepdims=True, axis=-1)
 
 # x is a list of zeros and ones.
-def b2d(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
+def b2d(x):
+    return sum([2**j for j, xx in enumerate(x) if bool(xx)])
 
 
 
@@ -96,7 +97,7 @@ class Environment(object):
             return self.get_shared(actions), self.get_private()
         return self.get_private()
 
-    def get_shared(self, actions):
+    def get_shared(self, actions, state=None):
         # [n_states, n_actions, n_shared]
         return self.shared[self.state, b2d(list(actions)), :]
 
@@ -113,7 +114,7 @@ class Environment(object):
 
     def next_step(self, actions):
         # [n_states, n_actions, n_state]
-        kk, jj = self.state, b2d(list(actions))
+        kk, jj = self.state, b2d(actions.tolist())
         probabilities = self.transitions[kk, jj, :]
         self.state = \
             np.random.choice(np.arange(self.n_states), p=probabilities)
@@ -122,6 +123,7 @@ class Environment(object):
     @property
     def adjacency(self):
         return self._adjacency(self.n_step)
+        # return np.ones((self.n_nodes, self.n_nodes)) - np.eye(self.n_nodes)
 
     @lru_cache(maxsize=1)
     def _adjacency(self, n_step):

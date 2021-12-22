@@ -6,7 +6,7 @@ import multiprocessing
 from multiprocessing.pool import Pool
 
 from train import train
-from plots import globally_averaged_plot, q_values_plot
+from plots import globally_averaged_plot, q_values_plot, advantages_plot, delta_plot, mu_plot
 
 def fn(args): return train(*args)
 # helps transform a list of dictionaries into a pair of lists
@@ -45,14 +45,22 @@ def main(n_runs, n_processors, n_steps, n_episodes):
     with (results_path / 'results.json').open('w') as f:
         json.dump(results, f)
 
-    centralized_J, decentralized_J = unwrap(results, 0) 
+    centralized_J, decentralized_J = unwrap(results, 'J') 
     globally_averaged_plot(centralized_J, decentralized_J, results_path)
 
-    centralized_Q, decentralized_Q = unwrap(results, 1) 
+    centralized_Q, decentralized_Q = unwrap(results, 'Q') 
     q_values_plot(centralized_Q, decentralized_Q, results_path)
 
+    _, decentralized_A = unwrap(results, 'A') 
+    advantages_plot(decentralized_A, results_path)
+
+    centralized_delta, decentralized_delta = unwrap(results, 'delta') 
+    delta_plot(centralized_delta, decentralized_delta, results_path)
+
+    centralized_mu, decentralized_mu = unwrap(results, 'mu') 
+    mu_plot(centralized_mu, decentralized_mu, results_path)
     return results, str(results_path)
 
 if __name__ == '__main__':
-    results, results_path = main(12, 6, 10000, 1)
+    results, results_path = main(2, 1, 1500, 1)
 

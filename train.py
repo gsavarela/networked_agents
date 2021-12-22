@@ -27,7 +27,7 @@ def train(n_steps, n_episodes, seed):
     # worse
     n_states = 2
     n_actions = 2
-    n_nodes = 5
+    n_nodes = 2
     n_shared = 10
     n_private = 5
     is_time_variable_graph = False
@@ -45,6 +45,7 @@ def train(n_steps, n_episodes, seed):
 
     np.random.seed(seed)
     consensus = env.get_consensus()
+    sa_00 = env.shared[0, 0, :] # arbitrary
     results = {}
     for distributed in (True, False):
         # system of agents
@@ -52,6 +53,9 @@ def train(n_steps, n_episodes, seed):
 
         globally_averaged_return = []
         agents_q_values = []
+        agents_mus = []
+        agents_advantages = []
+        agents_deltas = []
 
 
         for episode in trange(n_episodes, position=0):
@@ -78,15 +82,24 @@ def train(n_steps, n_episodes, seed):
                         else:
                             tr.append(consensus)
                 
-                    q_values = agent.update(*tr)
+                    advantages, deltas = agent.update(*tr)
                     globally_averaged_return.append(np.mean(agent.mu))
-                    agents_q_values.append(q_values)
+                    agents_mus.append(agent.mu.tolist())
+                    agents_q_values.append(agent.get_q(sa_00))
+                    agents_advantages.append(advantages)
+                    agents_deltas.append(deltas)
                     state, actions = next_state, next_actions
 
             except StopIteration as e:
                 agent.reset()
                 key = get_label(distributed)
-                results[key] = (globally_averaged_return, agents_q_values)
+                results[key] = {
+                    'A': agents_advantages,
+                    'J': globally_averaged_return,
+                    'Q': agents_q_values,
+                    'delta': agents_deltas,
+                    'mu': agents_mus,
+                }
     return results
 
 

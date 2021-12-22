@@ -52,6 +52,9 @@ class DistributedActorCritic(object):
         self.mu = np.zeros(self.n_agents)
         self.next_mu = np.zeros(self.n_agents)
 
+        # self.mu = np.zeros(1)
+        # self.next_mu = np.zeros(1)
+
         self.w = np.ones((self.n_agents, self.n_shared)) * (1/ self.n_shared)
         self.theta = np.ones((self.n_agents, self.n_private)) * (1/ self.n_private)
         self.reset()
@@ -110,12 +113,16 @@ class DistributedActorCritic(object):
         alpha = self.alpha
         beta = self.beta
         mu = self.mu
-        q_values = [] # output
+        advantages = []
+        deltas = []
         # 3. Loop through agents' decisions.
         for i in range(self.n_agents):
             # 3.1 Compute time-difference delta
             delta = reward[i] - mu[i] + \
                     self.q(next_shared, i) - self.q(shared, i)
+
+            # delta = np.mean(reward) - mu + \
+            #         self.q(next_shared, i) - self.q(shared, i)
             # 3.2 Critic step
             # [n_shared,]
             self.w[i, :] += alpha * (delta * dq)
@@ -124,15 +131,21 @@ class DistributedActorCritic(object):
             adv = self.advantage(shared, private, actions, i)
             ksi = self.grad_policy(private, actions, i)     # [n_shared]
             self.theta[i, :] += (beta * adv * ksi) # [n_shared]
+            # self.theta[i, :] += (beta * delta * ksi) # [n_shared]
 
-            q_values.append(self.q(shared, i))
+            advantages.append(adv)
+            deltas.append(float(delta))
 
         # Consensus step.
+        # print(self.w)
+        # print(f'norm:{np.linalg.norm(self.w[0,:] - self.w[1, :])}')
         self.w = C @ self.w
+        # print(np.linalg.norm(self.w[0,:] - self.w[1, :]))
+        # print(self.w)
         self.n_steps += 1
         self.mu = self.next_mu
 
-        return q_values
+        return advantages, deltas
 
     def q(self, shared, i):
         '''Q-function 
@@ -154,10 +167,10 @@ class DistributedActorCritic(object):
     def v(self, private, actions, i):
         def get_phi(x): return self.env.get_shared(x)
         probabilities = self.policy(private, i)
-        _actions = deepcopy(actions)
         ret = 0
         for j, aj in enumerate(range(self.n_actions)):
-            phi_aj = get_phi(replace(_actions, i, aj))
+            _actions = [aj if k == i else ak for k, ak in enumerate(actions)] 
+            phi_aj = get_phi(np.array(_actions))
             ret += probabilities[j] * self.q(phi_aj, i)
         return ret
 
@@ -183,6 +196,9 @@ class DistributedActorCritic(object):
 
     def advantage(self, shared, private, actions, i):
         return self.q(shared, i) - self.v(private, actions, i)
+
+    def get_q(self, shared):
+        return [self.q(shared,  i) for i in range(self.n_agents)]
 
 
 if __name__ == '__main__':

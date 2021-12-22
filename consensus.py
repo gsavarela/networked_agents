@@ -63,8 +63,9 @@ def adjacency_matrix(n_nodes, n_edges):
     full_edge_list = \
         [(i, j) for i in range(n_nodes - 1) for j in range(i + 1, n_nodes)] 
 
+    n_choices = min(len(full_edge_list), n_edges)
     edge_ids = \
-        np.random.choice(len(full_edge_list), replace=False, size=int(n_edges))
+        np.random.choice(len(full_edge_list), replace=False, size=n_choices)
 
     edge_list = [full_edge_list[i] for i in sorted(edge_ids)]
 
