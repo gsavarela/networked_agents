@@ -190,9 +190,8 @@ class DistributedActorCritic(object):
     def grad_policy(self, private, actions, i):
         # [n_actions]
         probabilities = self.policy(private, i)
-        ai = actions[i]
         # FIXME: Broadcast bug.
-        return private[actions[i], i, :] - np.sum(probabilities @ private[:, i, :])
+        return private[actions[i], i, :] - probabilities @ private[:, i, :]
 
     def advantage(self, shared, private, actions, i):
         return self.q(shared, i) - self.v(private, actions, i)

@@ -133,7 +133,7 @@ class ActorCritic(object):
         # [n_actions]
         probabilities = self.policy(private, i)
         # FIXME: Broadcast bug.
-        return private[actions[i], i, :] - np.sum(probabilities @ private[:, i, :])
+        return private[actions[i], i, :] - probabilities @ private[:, i, :]
 
     def get_q(self, shared):
         return self.q(shared)
