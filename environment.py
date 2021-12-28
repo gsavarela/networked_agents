@@ -24,8 +24,7 @@ def softmax(x):
     return e_x / np.sum(e_x, keepdims=True, axis=-1)
 
 # x is a list of zeros and ones.
-def b2d(x):
-    return sum([2**j for j, xx in enumerate(x) if bool(xx)])
+def b2d(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
 
 
 
@@ -99,25 +98,24 @@ class Environment(object):
 
     def get_shared(self, actions, state=None):
         # [n_states, n_actions, n_shared]
-        return self.shared[self.state, b2d(list(actions)), :]
+        return self.shared[self.state, b2d(actions), :]
 
     def get_private(self):
-        #[n_states, n_actions, n_nodes, n_private]
-        ii  = np.arange(self.n_nodes)
-        return self.private[self.state, :, ii, :]
+        #[n_actions, n_nodes, n_private]
+        return self.private[self.state, ...]
 
     def get_rewards(self, actions):
         #[n_states, n_actions, n_nodes]
-        r = self.average_rewards[self.state, b2d(list(actions)), :]
+        r = self.average_rewards[self.state, b2d(actions), :]
         u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
         return r + u
 
     def next_step(self, actions):
         # [n_states, n_actions, n_state]
-        kk, jj = self.state, b2d(actions.tolist())
+        kk, jj = self.state, b2d(actions)
         probabilities = self.transitions[kk, jj, :]
         self.state = \
-            np.random.choice(np.arange(self.n_states), p=probabilities)
+            np.random.choice(self.n_states, p=probabilities)
         self.n_step += 1
 
     @property

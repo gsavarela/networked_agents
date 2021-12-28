@@ -18,19 +18,19 @@ def get_label(distributed):
 
 def train(n_steps, n_episodes, seed):
     # # TODO: Make parse_args
-    # n_states = 20
+    # n_states = 3
     # n_actions = 2
-    # n_nodes = 20
+    # n_nodes = 4
     # n_shared = 10
     # n_private = 5
 
     # worse
-    n_states = 2
+    n_states = 20
     n_actions = 2
-    n_nodes = 2
+    n_nodes = 20
     n_shared = 10
     n_private = 5
-    is_time_variable_graph = False
+    is_time_variable_graph = True
 
     # Instanciate
     env = Environment(
@@ -45,7 +45,8 @@ def train(n_steps, n_episodes, seed):
 
     np.random.seed(seed)
     consensus = env.get_consensus()
-    sa_00 = env.shared[0, 0, :] # arbitrary
+    phi_00 = env.shared[0, 0, :] # arbitrary
+    q_2 = env.private[2, ...] # arbitrary
     results = {}
     for distributed in (True, False):
         # system of agents
@@ -56,7 +57,6 @@ def train(n_steps, n_episodes, seed):
         agents_mus = []
         agents_advantages = []
         agents_deltas = []
-
 
         for episode in trange(n_episodes, position=0):
 
@@ -85,7 +85,7 @@ def train(n_steps, n_episodes, seed):
                     advantages, deltas = agent.update(*tr)
                     globally_averaged_return.append(np.mean(agent.mu))
                     agents_mus.append(agent.mu.tolist())
-                    agents_q_values.append(agent.get_q(sa_00))
+                    agents_q_values.append(agent.get_q(phi_00))
                     agents_advantages.append(advantages)
                     agents_deltas.append(deltas)
                     state, actions = next_state, next_actions
@@ -93,12 +93,15 @@ def train(n_steps, n_episodes, seed):
             except StopIteration as e:
                 agent.reset()
                 key = get_label(distributed)
+
+                agent.get_pi(q_2)
                 results[key] = {
                     'A': agents_advantages,
                     'J': globally_averaged_return,
                     'Q': agents_q_values,
                     'delta': agents_deltas,
                     'mu': agents_mus,
+                    'pi': agent.get_pi(q_2)
                 }
     return results
 

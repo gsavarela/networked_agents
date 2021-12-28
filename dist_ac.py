@@ -90,11 +90,10 @@ class DistributedActorCritic(object):
         * actions: [n_agents,]
         boolean array
         '''
-        choices = np.zeros(self.n_agents, dtype=np.int32)
-        action_set = np.arange(self.n_actions)
+        choices = []
         for i in range(self.n_agents):
             probs = self.policy(private, i)
-            choices[i] = np.random.choice(action_set, p=probs)
+            choices.append(int(np.random.choice(self.n_actions, p=probs)))
         return choices
 
     def update_mu(self, rewards):
@@ -183,7 +182,7 @@ class DistributedActorCritic(object):
         # gibbs distribution / Boltzman policies.
         # [n_private, n_actions]
         # [n_private] @ [n_private, n_actions] --> [n_actions]
-        x = self.theta[i, :] @ private[i, :].T
+        x = self.theta[i, :] @ private[:, i, :].T
         # [n_actions]
         x = softmax(x) 
         return x
@@ -192,13 +191,17 @@ class DistributedActorCritic(object):
         # [n_actions]
         probabilities = self.policy(private, i)
         ai = actions[i]
-        return private[i, ai, :] - np.sum(probabilities @ private[i, :])
+        # FIXME: Broadcast bug.
+        return private[actions[i], i, :] - np.sum(probabilities @ private[:, i, :])
 
     def advantage(self, shared, private, actions, i):
         return self.q(shared, i) - self.v(private, actions, i)
 
     def get_q(self, shared):
         return [self.q(shared,  i) for i in range(self.n_agents)]
+
+    def get_pi(self, private):
+        return [self.policy(private, i).tolist() for i in range(self.n_agents)]
 
 
 if __name__ == '__main__':

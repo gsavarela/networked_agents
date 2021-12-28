@@ -139,6 +139,45 @@ def mu_plot(centralized_mus, decentralized_mus, results_path=None):
     file_name = (results_path / 'mus.png').as_posix()
     plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
 
+def pi_plot(centralized_pis, decentralized_pis, results_path=None):
+    # plt.rcParams['text.usetex'] = True 
+    if results_path is None:
+        results_path = Path('data/results')
+
+    decentralized_pis = np.array(decentralized_pis)
+    n_runs, n_agents, n_probs = decentralized_pis.shape
+
+    decentralized_pis = np.average(decentralized_pis, axis=0).reshape(-1)
+
+
+    centralized_pis = np.array(centralized_pis)
+    n_runs, n_agents, n_probs = centralized_pis.shape
+    centralized_pis = np.average(centralized_pis, axis=0).reshape(-1)
+    width = 0.25  # the width of the bars
+
+    fig, ax = plt.subplots()
+    X = np.arange(1, n_agents * n_probs + 1, 1)
+    labels = [i if i % 5 == 0 else None for i in range(1, n_agents * n_probs + 1)]
+
+    rects1 = ax.bar(X - width/2, centralized_pis.tolist(), width, label='Centralized')
+    rects2 = ax.bar(X + width/2, decentralized_pis.tolist(), width, label='Distributed')
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    # ax.set_ylabel(r'$\displaystyle \text{Probabilities} \pi(s, a^i)')
+    ax.set_ylabel('Probabilities pi(s, a^i)')
+    ax.set_xlabel('(s, a^i)')
+    ax.set_title('s = 2')
+    ax.set_xticks(X)
+    ax.set_xticklabels(labels)
+    # ax.tick_params(axis='x', labelrotation=90)
+    ax.legend(loc='upper right')
+
+    fig.tight_layout()
+    file_name = (results_path / 'pis.pdf').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+    file_name = (results_path / 'pis.png').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+
 def q_values_plot(centralized_Q, decentralized_Q, results_path=None):
     
     if results_path is None:

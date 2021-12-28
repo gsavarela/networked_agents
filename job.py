@@ -6,7 +6,8 @@ import multiprocessing
 from multiprocessing.pool import Pool
 
 from train import train
-from plots import globally_averaged_plot, q_values_plot, advantages_plot, delta_plot, mu_plot
+from plots import globally_averaged_plot, q_values_plot, advantages_plot
+from plots import delta_plot, mu_plot, pi_plot
 
 def fn(args): return train(*args)
 # helps transform a list of dictionaries into a pair of lists
@@ -59,8 +60,11 @@ def main(n_runs, n_processors, n_steps, n_episodes):
 
     centralized_mu, decentralized_mu = unwrap(results, 'mu') 
     mu_plot(centralized_mu, decentralized_mu, results_path)
+
+    centralized_pi, decentralized_pi = unwrap(results, 'pi') 
+    pi_plot(centralized_pi, decentralized_pi, results_path)
     return results, str(results_path)
 
 if __name__ == '__main__':
-    results, results_path = main(2, 1, 1500, 1)
+    results, results_path = main(1, 1, 10000, 1)
 

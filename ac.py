@@ -124,7 +124,7 @@ class ActorCritic(object):
         # gibbs distribution / Boltzman policies.
         # [n_private, n_actions]
         # [n_private] @ [n_private, n_actions] --> [n_actions]
-        x = self.theta[i, :] @ private[i, :].T
+        x = self.theta[i, :] @ private[:, i, :].T
         # [n_actions]
         x = softmax(x) 
         return x
@@ -132,12 +132,14 @@ class ActorCritic(object):
     def grad_policy(self, private, actions, i):
         # [n_actions]
         probabilities = self.policy(private, i)
-        ai = actions[i]
-        return private[i, ai, :] - np.sum(probabilities @ private[i, :])
+        # FIXME: Broadcast bug.
+        return private[actions[i], i, :] - np.sum(probabilities @ private[:, i, :])
 
     def get_q(self, shared):
         return self.q(shared)
 
+    def get_pi(self, private):
+        return [self.policy(private, i).tolist() for i in range(self.n_nodes)]
 
 if __name__ == '__main__':
     n_states=3
