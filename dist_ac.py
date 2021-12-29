@@ -104,7 +104,7 @@ class DistributedActorCritic(object):
         self.next_mu = (1 - self.alpha) * self.mu + self.alpha * rewards
 
     def update(self, state, actions, reward, next_state, next_actions, C):
-        # Common knowledge at timestep-t
+        # 1. Common knowledge at timestep-t
         shared, private = state
         next_shared, next_private = next_state
 
@@ -114,22 +114,19 @@ class DistributedActorCritic(object):
         mu = self.mu
         advantages = []
         deltas = []
-        # 3. Loop through agents' decisions.
+        # 2. Iterate agents on the network.
         for i in range(self.n_agents):
-            # 3.1 Compute time-difference delta
+            # 2.1 Compute time-difference delta
             delta = reward[i] - mu[i] + \
                     self.q(next_shared, i) - self.q(shared, i)
 
-            # delta = np.mean(reward) - mu + \
-            #         self.q(next_shared, i) - self.q(shared, i)
-            # 3.2 Critic step
-            # [n_shared,]
-            self.w[i, :] += alpha * (delta * dq)
+            # 2.2 Critic step
+            self.w[i, :] += alpha * (delta * dq) # [n_shared,]
 
             # 3.3 Actor step
-            adv = self.advantage(shared, private, actions, i)
-            ksi = self.grad_policy(private, actions, i)     # [n_shared]
-            self.theta[i, :] += (beta * adv * ksi) # [n_shared]
+            adv = self.advantage(shared, private, actions, i) # [n_private,]
+            ksi = self.grad_policy(private, actions, i)     # [n_private]
+            self.theta[i, :] += (beta * adv * ksi) # [n_private]
             # self.theta[i, :] += (beta * delta * ksi) # [n_shared]
 
             advantages.append(adv)

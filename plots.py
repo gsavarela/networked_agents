@@ -159,8 +159,8 @@ def pi_plot(centralized_pis, decentralized_pis, results_path=None):
     X = np.arange(1, n_agents * n_probs + 1, 1)
     labels = [i if i % 5 == 0 else None for i in range(1, n_agents * n_probs + 1)]
 
-    rects1 = ax.bar(X - width/2, centralized_pis.tolist(), width, label='Centralized')
-    rects2 = ax.bar(X + width/2, decentralized_pis.tolist(), width, label='Distributed')
+    rects1 = ax.bar(X - width/2, centralized_pis.tolist(), width, color=CENTRALIZED_AGENT_COLOR, label='Centralized')
+    rects2 = ax.bar(X + width/2, decentralized_pis.tolist(), width, color=MEAN_CURVE_COLOR, label='Distributed')
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
     # ax.set_ylabel(r'$\displaystyle \text{Probabilities} \pi(s, a^i)')
@@ -214,4 +214,137 @@ def q_values_plot(centralized_Q, decentralized_Q, results_path=None):
     file_name = (results_path / 'q_values.pdf').as_posix()
     plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
     file_name = (results_path / 'q_values.png').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+
+def log_plot(centralized_log, distributed_log, results_path=None):
+    if results_path is None:
+        results_path = Path('data/results')
+    # best actions plot
+    # same for centralized and decentralized
+    best_actions, best_actions_rewards = centralized_log['best_actions'], centralized_log['best_actions_rewards']
+
+    best_actions_plot(best_actions, best_actions_rewards, results_path)
+    # states plot
+
+    centralized_states, distributed_states = centralized_log['state'], distributed_log['state']
+    states_plot(centralized_states, distributed_states, results_path)
+    # actions plot
+
+    centralized_actions, distributed_actions = centralized_log['actions'], distributed_log['actions']
+    actions_plot(centralized_actions, distributed_actions, results_path)
+    # rewards plot
+    centralized_average_rewards, distributed_average_rewards = centralized_log['reward'], distributed_log['reward']
+    average_rewards_plot(centralized_average_rewards, distributed_average_rewards, results_path)
+
+
+def best_actions_plot(best_actions, best_actions_rewards, results_path):
+
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    X = np.arange(len(best_actions))
+    width = 20
+    ax1.bar(X, best_actions, width)
+    ax1.set_ylabel('action')
+    ax1.set_xlabel('s')
+    ax1.set_title('Best Action')
+    ax1.set_xticks(X)
+    # ax1.set_xticklabels(labels)
+    ax1.legend(loc='upper right')
+
+    ax2.bar(X, best_actions_rewards, width)
+    ax2.set_ylabel("reward")
+    ax2.set_xlabel('s')
+    ax2.set_title('Best Actions Average Reward')
+    ax2.set_xticks(X)
+    # ax2.set_xticklabels(labels)
+    ax2.legend(loc='upper right')
+
+    fig.tight_layout()
+    file_name = (results_path / 'best_actions.pdf').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+    file_name = (results_path / 'best_actions.png').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+    
+
+def states_plot(centralized_states, distributed_states, results_path):
+    X = np.arange(len(distributed_states))
+
+    if results_path is None:
+        results_path = Path('data/results')
+
+    Y = np.array(distributed_states)
+    T = np.array(centralized_states)
+    n_steps = Y.shape[0]
+
+    fig = plt.figure()
+    fig.set_size_inches(FIGURE_X, FIGURE_Y)
+
+
+    X = np.linspace(1, n_steps, n_steps)
+
+    plt.plot(X, Y, label=f'Distributed', c=MEAN_CURVE_COLOR)
+    plt.plot(X, T, label='Centralized', c=CENTRALIZED_AGENT_COLOR)
+
+    plt.xlabel('Time')
+    plt.ylabel('States')
+    plt.legend(loc='upper right')
+
+    file_name = (results_path / 'states.pdf').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+    file_name = (results_path / 'states.png').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+
+
+def actions_plot(centralized_actions, distributed_actions, results_path):
+    X = np.arange(len(distributed_actions))
+
+    if results_path is None:
+        results_path = Path('data/results')
+
+    Y = np.array(distributed_actions)
+    T = np.array(centralized_actions)
+    n_steps = Y.shape[0]
+
+
+    fig = plt.figure()
+    fig.set_size_inches(FIGURE_X, FIGURE_Y)
+
+
+    X = np.linspace(1, n_steps, n_steps)
+    plt.plot(X, Y, label=f'Distributed', c=MEAN_CURVE_COLOR)
+    plt.plot(X, T, label='Centralized', c=CENTRALIZED_AGENT_COLOR)
+
+    plt.xlabel('Time')
+    plt.ylabel('Actions')
+    plt.legend(loc='upper right')
+
+    file_name = (results_path / 'actions.pdf').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+    file_name = (results_path / 'actions.png').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+
+def average_rewards_plot(centralized_average_rewards, distributed_average_rewards, results_path):
+    X = np.arange(len(distributed_average_rewards))
+
+    if results_path is None:
+        results_path = Path('data/results')
+
+    Y = np.array(distributed_average_rewards)
+    T = np.array(centralized_average_rewards)
+    n_steps = Y.shape[0]
+
+    fig = plt.figure()
+    fig.set_size_inches(FIGURE_X, FIGURE_Y)
+
+
+    X = np.linspace(1, n_steps, n_steps)
+    plt.plot(X, Y, label=f'Distributed', c=MEAN_CURVE_COLOR)
+    plt.plot(X, T, label='Centralized', c=CENTRALIZED_AGENT_COLOR)
+
+    plt.xlabel('Time')
+    plt.ylabel('Instantaneous Rewards')
+    plt.legend(loc='upper right')
+
+    file_name = (results_path / 'average_rewards.pdf').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+    file_name = (results_path / 'average_rewards.png').as_posix()
     plt.savefig(file_name, bbox_inches='tight', pad_inches=0)

@@ -9,6 +9,7 @@
 '''
 from operator import itemgetter
 from functools import lru_cache
+from collections import defaultdict
 
 import numpy as np
 from numpy.random import uniform
@@ -67,7 +68,7 @@ class Environment(object):
             phis.append(shared)
 
             # 2. Each agent has an individual average reward.
-            avg_rewards.append(uniform(low=0, high=4, size=(n_states, n_nodes)))
+            avg_rewards.append(uniform(low=0, high=4, size=(n_states, n_nodes)).astype(np.float))
 
         # [n_states, n_actions, n_state]
         self.transitions = np.stack(probabilities, axis=1)
@@ -83,6 +84,20 @@ class Environment(object):
 
         # 5. Builds a list with every possible edge. 
         self.edge_list = [(i, j) for i in range(n_nodes - 1) for j in range(i + 1, n_nodes)]
+
+        self.log = defaultdict(list)
+
+        best_actions = np.argmax(np.average(self.average_rewards, axis=2), axis=1).astype(np.int32)
+        best_actions_rewards = []
+
+        avg = np.average(self.average_rewards, axis=2)
+        for i in range(n_states):
+            ba = best_actions[i]
+            best_actions_rewards.append(float(np.round(avg[i, best_actions[i]], 2)))
+
+        self.log['best_actions'] = best_actions.tolist()
+        self.log['best_actions_rewards'] = best_actions_rewards
+
         self.reset()
 
     def reset(self):
@@ -90,6 +105,8 @@ class Environment(object):
         np.random.seed(self.seed) 
         self.state = np.random.choice(self.n_states)
         self.n_step = 0
+        for key in ('actions', 'steps', 'state', 'reward'):
+            if key in self.log: del self.log[key]
 
     def get_features(self, actions=None):
         if actions is not None:
@@ -107,8 +124,9 @@ class Environment(object):
     def get_rewards(self, actions):
         #[n_states, n_actions, n_nodes]
         r = self.average_rewards[self.state, b2d(actions), :]
-        u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
-        return r + u
+        # u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
+        # return r + u
+        return r
 
     def next_step(self, actions):
         # [n_states, n_actions, n_state]
@@ -121,7 +139,6 @@ class Environment(object):
     @property
     def adjacency(self):
         return self._adjacency(self.n_step)
-        # return np.ones((self.n_nodes, self.n_nodes)) - np.eye(self.n_nodes)
 
     @lru_cache(maxsize=1)
     def _adjacency(self, n_step):
@@ -139,13 +156,19 @@ class Environment(object):
         for step in tqdm(range(n_steps)):
             done = (step == (n_steps -1))
             if first:
+                r = 0
                 actions = yield self.get_features()
                 first = False
             else:
-                actions = yield self.get_features(actions), self.get_rewards(actions), done
+                r = self.get_rewards(actions)
+                actions = yield self.get_features(actions), r, done
+
+            self.log['state'].append(self.state)
+            self.log['reward'].append(float(np.mean(r)))
+            self.log['actions'].append(b2d(actions))
+            self.log['steps'].append(self.n_step)
             self.next_step(actions)
         return 0 
-
 if __name__ == '__main__':
 
     np.random.seed(42)

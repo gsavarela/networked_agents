@@ -7,7 +7,7 @@ from multiprocessing.pool import Pool
 
 from train import train
 from plots import globally_averaged_plot, q_values_plot, advantages_plot
-from plots import delta_plot, mu_plot, pi_plot
+from plots import delta_plot, mu_plot, pi_plot, log_plot
 
 def fn(args): return train(*args)
 # helps transform a list of dictionaries into a pair of lists
@@ -15,7 +15,6 @@ def gn(adict, pos): return (adict['centralized'][pos], adict['distributed'][pos]
 def unwrap(alist, pos): return zip(*[gn(elem, pos) for elem in alist])
 
 def main(n_runs, n_processors, n_steps, n_episodes):
-
 
     results_path = Path('data/results')
     results_path.mkdir(exist_ok=True)
@@ -45,7 +44,6 @@ def main(n_runs, n_processors, n_steps, n_episodes):
     # get globally averaged return
     with (results_path / 'results.json').open('w') as f:
         json.dump(results, f)
-
     centralized_J, decentralized_J = unwrap(results, 'J') 
     globally_averaged_plot(centralized_J, decentralized_J, results_path)
 
@@ -63,6 +61,9 @@ def main(n_runs, n_processors, n_steps, n_episodes):
 
     centralized_pi, decentralized_pi = unwrap(results, 'pi') 
     pi_plot(centralized_pi, decentralized_pi, results_path)
+
+    centralized_log, decentralized_log = unwrap(results, 'data') 
+    log_plot(centralized_log[0], decentralized_log[0], results_path)
     return results, str(results_path)
 
 if __name__ == '__main__':

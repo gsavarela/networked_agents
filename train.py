@@ -1,8 +1,9 @@
+from copy import deepcopy
 import json
 from collections import defaultdict
-import numpy as np
-
 from pathlib import Path
+
+import numpy as np
 from tqdm import trange
 
 from environment import Environment
@@ -18,21 +19,21 @@ def get_label(distributed):
 
 def train(n_steps, n_episodes, seed):
     # # TODO: Make parse_args
-    # n_states = 3
+    # n_states = 20
     # n_actions = 2
-    # n_nodes = 4
+    # n_nodes = 20
     # n_shared = 10
     # n_private = 5
 
     # worse
     n_states = 20
     n_actions = 2
-    n_nodes = 20
+    n_nodes = 3
     n_shared = 10
     n_private = 5
     is_time_variable_graph = True
 
-    # Instanciate
+    # Instanciate environment
     env = Environment(
         n_states=n_states,
         n_actions=n_actions,
@@ -47,6 +48,15 @@ def train(n_steps, n_episodes, seed):
     consensus = env.get_consensus()
     phi_00 = env.shared[0, 0, :] # arbitrary
     q_2 = env.private[2, ...] # arbitrary
+    print('Best action for every state')
+    print(np.arange(n_states))
+    print(np.argmax(np.average(env.average_rewards, axis=2), axis=1))
+    best_actions = np.argmax(np.average(env.average_rewards, axis=2), axis=1)
+    avg = np.average(env.average_rewards, axis=2)
+    for i in range(n_states):
+        ba = best_actions[i]
+        print(f'{i}:{ba}:{np.round(avg[i, ba], 2)}')
+
     results = {}
     for distributed in (True, False):
         # system of agents
@@ -93,19 +103,19 @@ def train(n_steps, n_episodes, seed):
             except StopIteration as e:
                 agent.reset()
                 key = get_label(distributed)
-
-                agent.get_pi(q_2)
                 results[key] = {
                     'A': agents_advantages,
                     'J': globally_averaged_return,
                     'Q': agents_q_values,
                     'delta': agents_deltas,
                     'mu': agents_mus,
-                    'pi': agent.get_pi(q_2)
+                    'pi': agent.get_pi(q_2),
+                    'data': deepcopy(env.log)
                 }
     return results
 
 
+
 if __name__ == '__main__':
-    train(1000, 10, 0)
+    train(1000, 1, 0)
 
