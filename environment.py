@@ -16,13 +16,8 @@ from numpy.random import uniform
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
-# from consensus import metropolis_weights_matrix
 from consensus import laplacian_weights_matrix
 from consensus import adjacency_matrix
-
-def softmax(x):
-    e_x = np.exp(x)
-    return e_x / np.sum(e_x, keepdims=True, axis=-1)
 
 # x is a list of zeros and ones.
 def b2d(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
@@ -49,6 +44,7 @@ class Environment(object):
         self.seed = seed
 
         # Transitions & Shared set of features phi(s,a).
+        # n_action_space = np.power(n_actions, n_nodes)
         n_action_space = np.power(n_actions, n_nodes)
         probabilities = []
         phis = [] 
@@ -57,8 +53,8 @@ class Environment(object):
         np.random.seed(seed)
         for _ in range(n_action_space):
             u = uniform(size=(n_states, n_states)) + 1e-5 # ensure ergodicity
-            p = softmax(u)
-            probabilities.append(p)
+            prob = u / np.sum(u, axis=1, keepdims=True)
+            probabilities.append(prob)
 
             phi = uniform(size=(n_states, n_phi))
             phis.append(phi)
@@ -75,8 +71,6 @@ class Environment(object):
         # 4. Private set of features q(s, a_i)
         #[n_states, n_actions, n_nodes, n_varphi]
         self.VARPHI = uniform(size=(n_states, n_actions, n_nodes, n_varphi))
-
-        action_schema = np.arange(n_actions)
 
         # 5. Builds a list with every possible edge. 
         self.edge_list = [(i, j) for i in range(n_nodes - 1) for j in range(i + 1, n_nodes)]
@@ -97,7 +91,6 @@ class Environment(object):
     def get_features(self, actions=None):
         if actions is None: return self.get_varphi()
         return self.get_phi(actions), self.get_varphi()
-        
 
     def get_phi(self, actions, state=None):
         # [n_states, n_actions, n_phi]
@@ -132,10 +125,8 @@ class Environment(object):
 
     def next_step(self, actions):
         # [n_states, n_actions, n_state]
-        kk, jj = self.state, b2d(actions)
-        probabilities = self.P[kk, jj, :]
-        self.state = \
-            np.random.choice(self.n_states, p=probabilities)
+        probs = self.P[self.state, b2d(actions), :]
+        self.state = np.random.choice(self.n_states, p=probs)
         self.n_step += 1
 
     @property

@@ -67,5 +67,5 @@ def main(n_runs, n_processors, n_steps, n_episodes):
     return results, str(results_path)
 
 if __name__ == '__main__':
-    results, results_path = main(1, 1, 10000, 1)
+    results, results_path = main(1, 1, 1500, 1)
 

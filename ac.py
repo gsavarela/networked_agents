@@ -137,7 +137,7 @@ class ActorCritic(object):
 
         # 3.3 Actor step
         for i in range(self.n_nodes):
-            ksi = self.grad_policy(varphi, actions, i)     # [n_phi]
+            ksi = self.grad_log_policy(varphi, actions, i)     # [n_phi]
             self.theta[i, :] += (beta * delta * ksi) # [n_phi]
 
         self.n_steps += 1
@@ -197,7 +197,7 @@ class ActorCritic(object):
         x = softmax(x) 
         return x
 
-    def grad_policy(self, varphi, actions, i):
+    def grad_log_policy(self, varphi, actions, i):
         '''Computes gibbs distribution / Boltzman policies
 
         Parameters:
@@ -290,4 +290,4 @@ if __name__ == '__main__':
 
     env.next_step(actions)
 
-    ksis = [ac.grad_policy(varphi, actions, i) for i in range(n_nodes)]
+    ksis = [ac.grad_log_policy(varphi, actions, i) for i in range(n_nodes)]

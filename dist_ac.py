@@ -139,8 +139,8 @@ class DistributedActorCritic(object):
             self.w[i, :] += alpha * delta * dq # [n_phi,]
 
             # 3.3 Actor step
-            adv = self.advantage(phi, varphi, actions, i) # [n_varphi,]
-            ksi = self.grad_policy(varphi, actions, i)     # [n_varphi,]
+            adv = self.advantage(phi, varphi, actions, i)  # [n_varphi,]
+            ksi = self.grad_log_policy(varphi, actions, i)     # [n_varphi,]
             self.theta[i, :] += (beta * adv * ksi) # [n_varphi,]
 
             advantages.append(adv)
@@ -192,6 +192,8 @@ class DistributedActorCritic(object):
         ret = 0
         for j, aj in enumerate(range(self.n_actions)):
             _actions = [aj if k == i else ak for k, ak in enumerate(actions)] 
+            if i == 0:
+                print(_actions)
             phi_aj = self.env.get_phi(np.array(_actions))
             ret += probabilities[j] * self.q(phi_aj, i)
         return ret
@@ -234,7 +236,7 @@ class DistributedActorCritic(object):
         x = softmax(x) 
         return x
 
-    def grad_policy(self, varphi, actions, i):
+    def grad_log_policy(self, varphi, actions, i):
         '''Computes gibbs distribution / Boltzman policies
 
         Parameters:
@@ -371,7 +373,7 @@ if __name__ == '__main__':
     next_actions = dac.act(varphi)
     print(f'next_actions {next_actions}')
 
-    ksis = [dac.grad_policy(varphi, actions, i) for i in range(n_agents)]
+    ksis = [dac.grad_log_policy(varphi, actions, i) for i in range(n_agents)]
     # print(f'GradientLogPolicy:\t{ksis}')
 
     # params = dac.get_actor()

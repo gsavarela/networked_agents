@@ -19,18 +19,18 @@ def get_label(distributed):
 
 def train(n_steps, n_episodes, seed):
     # # TODO: Make parse_args
-    # n_states = 20
-    # n_actions = 2
-    # n_nodes = 20
-    # n_phi = 10  # critic features
-    # n_varphi = 5 # actor's features
-
-    # worse
     n_states = 20
     n_actions = 2
-    n_nodes = 2
-    n_phi = 10
-    n_varphi = 5
+    n_nodes = 20
+    n_phi = 10  # critic features
+    n_varphi = 15 # actor's features
+
+    # Mini problem
+    # n_states = 20
+    # n_actions = 2
+    # n_nodes = 3
+    # n_phi = 10
+    # n_varphi = 15
     is_time_variable_graph = True
 
     # Instanciate environment
