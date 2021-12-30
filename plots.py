@@ -223,7 +223,9 @@ def log_plot(centralized_log, distributed_log, results_path=None):
     # same for centralized and decentralized
     best_actions, best_actions_rewards = centralized_log['best_actions'], centralized_log['best_actions_rewards']
 
-    best_actions_plot(best_actions, best_actions_rewards, results_path)
+    best_actions_plot(best_actions, results_path)
+
+    best_actions_rewards_plot(best_actions_rewards, results_path)
     # states plot
 
     centralized_states, distributed_states = centralized_log['state'], distributed_log['state']
@@ -237,26 +239,17 @@ def log_plot(centralized_log, distributed_log, results_path=None):
     average_rewards_plot(centralized_average_rewards, distributed_average_rewards, results_path)
 
 
-def best_actions_plot(best_actions, best_actions_rewards, results_path):
+def best_actions_plot(best_actions, results_path):
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+    fig, ax  = plt.subplots()
     X = np.arange(len(best_actions))
-    width = 20
-    ax1.bar(X, best_actions, width)
-    ax1.set_ylabel('action')
-    ax1.set_xlabel('s')
-    ax1.set_title('Best Action')
-    ax1.set_xticks(X)
-    # ax1.set_xticklabels(labels)
-    ax1.legend(loc='upper right')
-
-    ax2.bar(X, best_actions_rewards, width)
-    ax2.set_ylabel("reward")
-    ax2.set_xlabel('s')
-    ax2.set_title('Best Actions Average Reward')
-    ax2.set_xticks(X)
-    # ax2.set_xticklabels(labels)
-    ax2.legend(loc='upper right')
+    ax.bar(X, best_actions)
+    ax.set_ylabel('action')
+    ax.set_xlabel('S')
+    ax.set_title('best action')
+    ax.set_xticks(X)
+    # ax.set_xticklabels(labels)
+    ax.legend(loc='upper right')
 
     fig.tight_layout()
     file_name = (results_path / 'best_actions.pdf').as_posix()
@@ -264,6 +257,22 @@ def best_actions_plot(best_actions, best_actions_rewards, results_path):
     file_name = (results_path / 'best_actions.png').as_posix()
     plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
     
+def best_actions_rewards_plot(best_actions_rewards, results_path):
+
+    fig, ax = plt.subplots()
+    X = np.arange(len(best_actions_rewards))
+    ax.bar(X, best_actions_rewards)
+    ax.set_ylabel('reward')
+    ax.set_xlabel('s')
+    ax.set_title('Best Team Reward')
+    ax.set_xticks(X)
+    ax.legend(loc='upper right')
+
+    fig.tight_layout()
+    file_name = (results_path / 'best_team_rewards.pdf').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
+    file_name = (results_path / 'best_team_rewards.png').as_posix()
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
 
 def states_plot(centralized_states, distributed_states, results_path):
     X = np.arange(len(distributed_states))
@@ -272,17 +281,20 @@ def states_plot(centralized_states, distributed_states, results_path):
         results_path = Path('data/results')
 
     Y = np.array(distributed_states)
-    T = np.array(centralized_states)
     n_steps = Y.shape[0]
+    X = np.linspace(1, n_steps, n_steps)
+
+    smoothed_Y = sm.nonparametric.lowess(Y, X, frac=0.01)
+    T = np.array(centralized_states)
+    smoothed_T = sm.nonparametric.lowess(T, X, frac=0.01)
 
     fig = plt.figure()
     fig.set_size_inches(FIGURE_X, FIGURE_Y)
 
 
-    X = np.linspace(1, n_steps, n_steps)
 
-    plt.plot(X, Y, label=f'Distributed', c=MEAN_CURVE_COLOR)
-    plt.plot(X, T, label='Centralized', c=CENTRALIZED_AGENT_COLOR)
+    plt.plot(X, smoothed_Y[:, 1], label=f'Smoothed Distributed', c=MEAN_CURVE_COLOR)
+    plt.plot(X, smoothed_T[:, 1], label='Smoothed Centralized', c=CENTRALIZED_AGENT_COLOR)
 
     plt.xlabel('Time')
     plt.ylabel('States')
@@ -301,8 +313,12 @@ def actions_plot(centralized_actions, distributed_actions, results_path):
         results_path = Path('data/results')
 
     Y = np.array(distributed_actions)
-    T = np.array(centralized_actions)
     n_steps = Y.shape[0]
+    X = np.linspace(1, n_steps, n_steps)
+
+    smoothed_Y = sm.nonparametric.lowess(Y, X, frac=0.01)
+    T = np.array(centralized_actions)
+    smoothed_T = sm.nonparametric.lowess(T, X, frac=0.01)
 
 
     fig = plt.figure()
@@ -310,8 +326,8 @@ def actions_plot(centralized_actions, distributed_actions, results_path):
 
 
     X = np.linspace(1, n_steps, n_steps)
-    plt.plot(X, Y, label=f'Distributed', c=MEAN_CURVE_COLOR)
-    plt.plot(X, T, label='Centralized', c=CENTRALIZED_AGENT_COLOR)
+    plt.plot(X, smoothed_Y[:, 1], label=f'Smoothed Distributed', c=MEAN_CURVE_COLOR)
+    plt.plot(X, smoothed_T[:, 1], label='Smoothed Centralized', c=CENTRALIZED_AGENT_COLOR)
 
     plt.xlabel('Time')
     plt.ylabel('Actions')
@@ -328,8 +344,8 @@ def average_rewards_plot(centralized_average_rewards, distributed_average_reward
     if results_path is None:
         results_path = Path('data/results')
 
-    Y = np.array(distributed_average_rewards)
-    T = np.array(centralized_average_rewards)
+    Y = np.cumsum(np.array(distributed_average_rewards) - 2)
+    T = np.cumsum(np.array(centralized_average_rewards) - 2)
     n_steps = Y.shape[0]
 
     fig = plt.figure()
@@ -341,7 +357,7 @@ def average_rewards_plot(centralized_average_rewards, distributed_average_reward
     plt.plot(X, T, label='Centralized', c=CENTRALIZED_AGENT_COLOR)
 
     plt.xlabel('Time')
-    plt.ylabel('Instantaneous Rewards')
+    plt.ylabel('Accumulated Team Rewards')
     plt.legend(loc='upper right')
 
     file_name = (results_path / 'average_rewards.pdf').as_posix()

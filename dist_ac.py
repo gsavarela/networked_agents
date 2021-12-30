@@ -29,8 +29,6 @@ sys.path.append(Path.cwd().as_posix())
 def softmax(x):
     e_x = np.exp(np.clip(x - np.max(x), a_min=-20, a_max=0))
     return e_x / e_x.sum()
-def replace(x, pos, elem): x[pos] = elem; return x
-
 
 class DistributedActorCritic(object):
 
@@ -42,8 +40,8 @@ class DistributedActorCritic(object):
         self.n_states = env.n_states
         self.n_actions = env.n_actions
         self.n_agents = env.n_nodes
-        self.n_shared = env.n_shared
-        self.n_private = env.n_private
+        self.n_phi = env.n_phi
+        self.n_varphi = env.n_varphi
         self.seed = env.seed
         assert env.n_actions == 2
 
@@ -52,11 +50,8 @@ class DistributedActorCritic(object):
         self.mu = np.zeros(self.n_agents)
         self.next_mu = np.zeros(self.n_agents)
 
-        # self.mu = np.zeros(1)
-        # self.next_mu = np.zeros(1)
-
-        self.w = np.ones((self.n_agents, self.n_shared)) * (1/ self.n_shared)
-        self.theta = np.ones((self.n_agents, self.n_private)) * (1/ self.n_private)
+        self.w = np.ones((self.n_agents, self.n_phi)) * (1/ self.n_phi)
+        self.theta = np.ones((self.n_agents, self.n_varphi)) * (1/ self.n_varphi)
         self.reset()
 
     @property 
@@ -75,40 +70,60 @@ class DistributedActorCritic(object):
         np.random.seed(self.seed)
         self.n_steps = 0
 
-    def act(self, private):
+    def act(self, varphi):
         '''Pick actions
-
-        first to be called on the pipeline.
 
         Parameters:
         -----------
-        * x: [n_agents, n_features * n_actions]
-        features
+        * varphi: [n_actions, n_agents, n_varphi]
+            Critic features
 
         Returns:
-        -----------
+        --------
         * actions: [n_agents,]
-        boolean array
+            Boolean array with agents actions for time t.
         '''
         choices = []
         for i in range(self.n_agents):
-            probs = self.policy(private, i)
+            probs = self.policy(varphi, i)
             choices.append(int(np.random.choice(self.n_actions, p=probs)))
         return choices
 
     def update_mu(self, rewards):
         '''Tracks long-term mean reward
 
-        second to be called on the pipeline.
+        Parameters:
+        -----------
+        * rewards: float<n_agents> 
+            instantaneous rewards.
         '''
         self.next_mu = (1 - self.alpha) * self.mu + self.alpha * rewards
 
-    def update(self, state, actions, reward, next_state, next_actions, C):
-        # 1. Common knowledge at timestep-t
-        shared, private = state
-        next_shared, next_private = next_state
+    def update(self, state, actions, rewards, next_state, next_actions, C):
+        '''Updates actor and critic parameters
 
-        dq = self.grad_q(shared)
+        Parameters:
+        -----------
+        * state: tuple<np.array<n_phi>, np.array<n_actions, n_agents, n_varphi>>
+            features representing the state where 
+            state[0]: phi represents the state at time t as seen by the critic.
+            state[1]: varphi represents the state at time t as seen by the actor.
+        * actions: np.array<n_agents>
+            Actions for each agent at time t.
+        * rewards: np.array<n_agents> 
+            Instantaneous rewards for each of the agents.
+        * next_state: tuple<np.array<n_phi>, np.array<n_actions, n_agents, n_varphi>>
+            features representing the state where 
+            next_state[0]: phi represents the state at time t+1 as seen by the critic.
+            next_state[1]: varphi represents the state at time t+1 as seen by the actor.
+        * next_actions: tuple(float<>, float<>)
+            Actions for each agent at time t+1.
+        '''
+        # 1. Common knowledge at timestep-t
+        phi, varphi = state
+        next_phi, _ = next_state
+
+        dq = self.grad_q(phi)
         alpha = self.alpha
         beta = self.beta
         mu = self.mu
@@ -117,102 +132,208 @@ class DistributedActorCritic(object):
         # 2. Iterate agents on the network.
         for i in range(self.n_agents):
             # 2.1 Compute time-difference delta
-            delta = reward[i] - mu[i] + \
-                    self.q(next_shared, i) - self.q(shared, i)
+            delta = rewards[i] - mu[i] + \
+                    self.q(next_phi, i) - self.q(phi, i)
 
             # 2.2 Critic step
-            self.w[i, :] += alpha * (delta * dq) # [n_shared,]
+            self.w[i, :] += alpha * delta * dq # [n_phi,]
 
             # 3.3 Actor step
-            adv = self.advantage(shared, private, actions, i) # [n_private,]
-            ksi = self.grad_policy(private, actions, i)     # [n_private]
-            self.theta[i, :] += (beta * adv * ksi) # [n_private]
-            # self.theta[i, :] += (beta * delta * ksi) # [n_shared]
+            adv = self.advantage(phi, varphi, actions, i) # [n_varphi,]
+            ksi = self.grad_policy(varphi, actions, i)     # [n_varphi,]
+            self.theta[i, :] += (beta * adv * ksi) # [n_varphi,]
 
             advantages.append(adv)
             deltas.append(float(delta))
 
         # Consensus step.
-        # print(self.w)
-        # print(f'norm:{np.linalg.norm(self.w[0,:] - self.w[1, :])}')
         self.w = C @ self.w
-        # print(np.linalg.norm(self.w[0,:] - self.w[1, :]))
-        # print(self.w)
         self.n_steps += 1
         self.mu = self.next_mu
 
         return advantages, deltas
 
-    def q(self, shared, i):
+    def q(self, phi, i):
         '''Q-function 
 
         Parameters:
         -----------
-        * x: [n_agents, n_features * n_actions]
-        features
-        * i: int
-        indicator for agent
+        * phi: np.array<n_phi>
+            critic features
 
         Returns:
         --------
-        * q_value: float
-        action-value function for agent i
+        * q: float
+            q-value for agent i
         '''
-        return self.w[i, :] @ shared
+        return self.w[i, :] @ phi
 
-    def v(self, private, actions, i):
-        def get_phi(x): return self.env.get_shared(x)
-        probabilities = self.policy(private, i)
+    def v(self, varphi, actions, i):
+        '''Relative value-function
+
+        A version of value-function where the effects of i-agent's
+        have been averaged. 
+
+        Parameters:
+        -----------
+        * varphi: np.array<n_actions, n_agents, n_varphi>
+            actor features
+        * actions: np.array<n_agents>
+            actions for agents
+        * i: integer
+            index of the agent on the interval {0,N-1}
+
+        Returns:
+        --------
+        * v: float
+            value-function with averaged i
+        '''
+        probabilities = self.policy(varphi, i)
         ret = 0
         for j, aj in enumerate(range(self.n_actions)):
             _actions = [aj if k == i else ak for k, ak in enumerate(actions)] 
-            phi_aj = get_phi(np.array(_actions))
+            phi_aj = self.env.get_phi(np.array(_actions))
             ret += probabilities[j] * self.q(phi_aj, i)
         return ret
 
-    def grad_q(self, shared):
-        '''Gradient of the Q-function '''
-        return shared
+    def grad_q(self, phi):
+        '''Gradient of the Q-function 
 
-    def policy(self, private, i):
-        '''pi(s, a_i)'''
-        # gibbs distribution / Boltzman policies.
-        # [n_private, n_actions]
-        # [n_private] @ [n_private, n_actions] --> [n_actions]
-        x = self.theta[i, :] @ private[:, i, :].T
+        Parameters:
+        ----------
+        * phi: np.array<n_phi>
+            Critic features
+
+        Returns:
+        -------
+        * gradient_q: np.array<n_phi>
+        '''
+        return phi
+
+    def policy(self, varphi, i):
+        '''Computes gibbs distribution / Boltzman policies
+
+        Parameters:
+        -----------
+        * varphi: np.array<n_actions, n_agents, n_varphi>
+            actor features
+
+
+        * i: integer
+            index of the agent on the interval {0,N-1}
+
+        Returns:
+        -------
+        * probabilities: np.array<n_actions>
+            Stochastic policy
+        '''
+        # [n_varphi, n_actions]
+        # [n_varphi] @ [n_varphi, n_actions] --> [n_actions]
+        x = self.theta[i, :] @ varphi[:, i, :].T
         # [n_actions]
         x = softmax(x) 
         return x
 
-    def grad_policy(self, private, actions, i):
+    def grad_policy(self, varphi, actions, i):
+        '''Computes gibbs distribution / Boltzman policies
+
+        Parameters:
+        -----------
+        * varphi: np.array<n_actions, n_agents, n_varphi>
+            actor features
+
+        * actions: np.array<n_agents>
+            actions for agents
+
+        * i: integer
+            index of the agent on the interval {0,N-1}
+
+        Returns:
+        -------
+        * grad_log_policy: np.array<n_varphi>
+            Score for policy of agent i.
+        '''
         # [n_actions]
-        probabilities = self.policy(private, i)
-        # FIXME: Broadcast bug.
-        return private[actions[i], i, :] - probabilities @ private[:, i, :]
+        probabilities = self.policy(varphi, i)
+        return varphi[actions[i], i, :] - probabilities @ varphi[:, i, :]
 
-    def advantage(self, shared, private, actions, i):
-        return self.q(shared, i) - self.v(private, actions, i)
+    def advantage(self, phi, varphi, actions, i):
+        '''Advantage agent i and time t
 
-    def get_q(self, shared):
-        return [self.q(shared,  i) for i in range(self.n_agents)]
+        The advantage for agent-i evaluates the `goodness` of 
+        taking action a_i.
 
-    def get_pi(self, private):
-        return [self.policy(private, i).tolist() for i in range(self.n_agents)]
+
+        Parameters:
+        -----------
+        * phi: np.array<n_phi>
+            Critic features
+
+        * varphi: np.array<n_actions, n_agents, n_varphi>
+            Actor features
+
+        * actions: np.array<n_agents>
+            actions for agents
+
+        * i: integer
+            index of the agent on the interval {0,N-1}
+
+        Returns:
+        -------
+        * advantege f
+            Score for policy of agent i.
+        '''
+        return self.q(phi, i) - self.v(varphi, actions, i)
+
+    def get_q(self, phi):
+        '''Q-function for each agent-i
+
+        Parameters:
+        -----------
+        * phi: np.array<n_phi>
+            Critic features
+
+        Returns:
+        -------
+        * q: np.array<n_agents>
+            Q value for each agent in the network.
+        '''
+        return [self.q(phi,  i) for i in range(self.n_agents)]
+
+    def get_pi(self, varphi):
+        '''Advantage agent i and time t
+
+        The advantage for agent-i evaluates the `goodness` of 
+        taking action a_i.
+
+
+        Parameters:
+        -----------
+        * varphi: np.array<n_actions, n_agents, n_varphi>
+            Actor features
+
+        Returns:
+        --------
+        * global policy: list<list<n_actions>>
+            List of policies for each agent.
+        '''
+
+        return [self.policy(varphi, i).tolist() for i in range(self.n_agents)]
 
 
 if __name__ == '__main__':
     n_states=3
     n_actions=2
     n_agents=3
-    n_shared=4
-    n_private=2
+    n_phi=4
+    n_varphi=2
 
     env = Environment(
         n_states=n_states,
         n_actions=n_actions,
         n_agents=n_agents,
-        n_shared=n_shared,
-        n_private=n_private
+        n_phi=n_phi,
+        n_varphi=n_varphi
     )
     # consensus 
     consensus = build_consensus_matrix(env.adjacency, method='metropolis')
@@ -231,26 +352,26 @@ if __name__ == '__main__':
     first_private = env.get_features()
     actions = dac.act(first_private)
     print(actions)
-    shared, private = env.get_features(actions)
-    np.testing.assert_almost_equal(private, first_private)
+    phi, varphi = env.get_features(actions)
+    np.testing.assert_almost_equal(varphi, first_private)
 
 
-    qs = [dac.q(shared,  i) for i in range(n_agents)]
+    qs = [dac.q(phi,  i) for i in range(n_agents)]
     print(f'action_value-function {qs}')
-    grad_q = dac.grad_q(shared)
+    grad_q = dac.grad_q(phi)
     print(f'grad_q {grad_q}')
-    np.testing.assert_almost_equal(grad_q, shared)
-    pis = [dac.policy(private, i) for i in range(n_agents)]
+    np.testing.assert_almost_equal(grad_q, phi)
+    pis = [dac.policy(varphi, i) for i in range(n_agents)]
     print(f'policies {pis}')
-    vs = [dac.v(private, actions, i) for i in range(n_agents)]
+    vs = [dac.v(varphi, actions, i) for i in range(n_agents)]
     print(f'value-function {vs}')
     # np.testing.assert_almost_equal(np.stack(qs), np.stack(vs))
-    advs = [dac.advantage(shared, private, actions, i) for i in range(n_agents)]
+    advs = [dac.advantage(phi, varphi, actions, i) for i in range(n_agents)]
     print(f'advantages {advs}')
-    next_actions = dac.act(private)
+    next_actions = dac.act(varphi)
     print(f'next_actions {next_actions}')
 
-    ksis = [dac.grad_policy(private, actions, i) for i in range(n_agents)]
+    ksis = [dac.grad_policy(varphi, actions, i) for i in range(n_agents)]
     # print(f'GradientLogPolicy:\t{ksis}')
 
     # params = dac.get_actor()

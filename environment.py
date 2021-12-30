@@ -8,7 +8,7 @@
     Dann, et al. 2014
 '''
 from operator import itemgetter
-from functools import lru_cache
+from functools import lru_cache, cached_property
 from collections import defaultdict
 
 import numpy as np
@@ -28,14 +28,13 @@ def softmax(x):
 def b2d(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
 
 
-
 class Environment(object):
     def __init__(self,
                  n_states=20,
                  n_actions=2,
                  n_nodes=20,
-                 n_shared=10,
-                 n_private=5,
+                 n_phi=10,
+                 n_varphi=5,
                  seed=0):
 
         # connectivity_ratio = 2 * n_edges / (n_nodes)*(n_nodes - 1) 
@@ -44,41 +43,38 @@ class Environment(object):
         self.n_states = n_states
         self.n_actions = n_actions
         self.n_nodes = n_nodes
-        self.n_shared = n_shared
-        self.n_private = n_private
+        self.n_phi = n_phi
+        self.n_varphi = n_varphi
         self.n_edges = 2 * (n_nodes - 1)
         self.seed = seed
 
         # Transitions & Shared set of features phi(s,a).
-        self.transitions = {}
-        self.shared = {}
-
         n_action_space = np.power(n_actions, n_nodes)
         probabilities = []
         phis = [] 
-        avg_rewards = []
+        average_rewards = []
         
         np.random.seed(seed)
         for _ in range(n_action_space):
-            u = np.random.rand(n_states, n_states) + 1e-5 # ensure ergodicity
+            u = uniform(size=(n_states, n_states)) + 1e-5 # ensure ergodicity
             p = softmax(u)
             probabilities.append(p)
 
-            shared = uniform(size=(n_states, n_shared))
-            phis.append(shared)
+            phi = uniform(size=(n_states, n_phi))
+            phis.append(phi)
 
             # 2. Each agent has an individual average reward.
-            avg_rewards.append(uniform(low=0, high=4, size=(n_states, n_nodes)).astype(np.float))
+            average_rewards.append(uniform(low=0, high=4, size=(n_states, n_nodes)).astype(np.float))
 
-        # [n_states, n_actions, n_state]
-        self.transitions = np.stack(probabilities, axis=1)
-        # [n_states, n_actions, n_shared]
-        self.shared = np.stack(phis, axis=1)
-        #[n_states, n_actions, n_nodes]
-        self.average_rewards = np.stack(avg_rewards, axis=1)
+        # MDP dynamics [n_states, n_actions, n_state]
+        self.P = np.stack(probabilities, axis=1)
+        # PHI actor features [n_states, n_actions, n_phi]
+        self.PHI = np.stack(phis, axis=1)
+        # Average rewards: [n_states, n_actions, n_nodes]
+        self.R = np.stack(average_rewards, axis=1)
         # 4. Private set of features q(s, a_i)
-        #[n_states, n_actions, n_nodes, n_private]
-        self.private = uniform(size=(n_states, n_actions, n_nodes, n_private))
+        #[n_states, n_actions, n_nodes, n_varphi]
+        self.VARPHI = uniform(size=(n_states, n_actions, n_nodes, n_varphi))
 
         action_schema = np.arange(n_actions)
 
@@ -86,18 +82,8 @@ class Environment(object):
         self.edge_list = [(i, j) for i in range(n_nodes - 1) for j in range(i + 1, n_nodes)]
 
         self.log = defaultdict(list)
-
-        best_actions = np.argmax(np.average(self.average_rewards, axis=2), axis=1).astype(np.int32)
-        best_actions_rewards = []
-
-        avg = np.average(self.average_rewards, axis=2)
-        for i in range(n_states):
-            ba = best_actions[i]
-            best_actions_rewards.append(float(np.round(avg[i, best_actions[i]], 2)))
-
-        self.log['best_actions'] = best_actions.tolist()
-        self.log['best_actions_rewards'] = best_actions_rewards
-
+        self.log['best_actions'] = self.best_actions.tolist()
+        self.log['best_actions_rewards'] = self.max_team_reward.tolist()
         self.reset()
 
     def reset(self):
@@ -109,29 +95,45 @@ class Environment(object):
             if key in self.log: del self.log[key]
 
     def get_features(self, actions=None):
-        if actions is not None:
-            return self.get_shared(actions), self.get_private()
-        return self.get_private()
+        if actions is None: return self.get_varphi()
+        return self.get_phi(actions), self.get_varphi()
+        
 
-    def get_shared(self, actions, state=None):
-        # [n_states, n_actions, n_shared]
-        return self.shared[self.state, b2d(actions), :]
+    def get_phi(self, actions, state=None):
+        # [n_states, n_actions, n_phi]
+        if state is not None: return self.PHI[state, b2d(actions), :]
+        return self.PHI[self.state, b2d(actions), :]
 
-    def get_private(self):
-        #[n_actions, n_nodes, n_private]
-        return self.private[self.state, ...]
+    def get_varphi(self, state=None):
+        #[n_states, n_actions, n_nodes, n_varphi]
+        if state is not None: return self.VARPHI[state, ...]
+        return self.VARPHI[self.state, ...]
 
     def get_rewards(self, actions):
         #[n_states, n_actions, n_nodes]
-        r = self.average_rewards[self.state, b2d(actions), :]
-        # u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
-        # return r + u
-        return r
+        r = self.R[self.state, b2d(actions), :]
+        u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
+        return r + u
+
+    # use this for debugging purpose
+    @cached_property
+    def best_actions(self):
+        return np.argmax(np.average(self.R, axis=2), axis=1)
+
+    # use this for debugging purpose
+    @cached_property
+    def max_team_reward(self):
+        avg = np.average(self.R, axis=2)
+        ba = self.best_actions
+        max_team_reward = []
+        for i in range(self.n_states):
+            max_team_reward.append(float(np.round(avg[i, ba[i]], 2)))
+        return np.array(max_team_reward)
 
     def next_step(self, actions):
         # [n_states, n_actions, n_state]
         kk, jj = self.state, b2d(actions)
-        probabilities = self.transitions[kk, jj, :]
+        probabilities = self.P[kk, jj, :]
         self.state = \
             np.random.choice(self.n_states, p=probabilities)
         self.n_step += 1
@@ -163,6 +165,7 @@ class Environment(object):
                 r = self.get_rewards(actions)
                 actions = yield self.get_features(actions), r, done
 
+
             self.log['state'].append(self.state)
             self.log['reward'].append(float(np.mean(r)))
             self.log['actions'].append(b2d(actions))
@@ -175,15 +178,15 @@ if __name__ == '__main__':
     n_states=10
     n_actions=2
     n_nodes=5
-    n_shared=5
-    n_private=3
+    n_phi=5
+    n_varphi=3
 
     env = Environment(
             n_states=n_states,
             n_actions=n_actions,
             n_nodes=n_nodes,
-            n_shared=n_shared,
-            n_private=n_private
+            n_phi=n_phi,
+            n_varphi=n_varphi
     )
 
     print(f'Graph-{env.n_step}:')
@@ -194,23 +197,23 @@ if __name__ == '__main__':
     state = env.state
     n_action_schema = 2 ** n_nodes
     print(f'current state: {state}')
-    print(env.transitions.shape) 
-    assert env.transitions.shape == (n_states, n_action_schema, n_states)
+    print(env.P.shape) 
+    assert env.P.shape == (n_states, n_action_schema, n_states)
 
     print(f'{actions} -> {b2d(list(actions))}')
 
 
     print('average reward')
-    print(env.average_rewards[agents, state, actions])
+    print(env.R[agents, state, actions])
     print('get_rewards(actions)')
     print(env.get_rewards(actions))
     env.next_step(actions)
     print(f'next_state {env.state}')
-    shared, private = env.get_features(actions)
+    phi, varphi = env.get_features(actions)
     print(f'Graph-{env.n_step}:')
     print(f'{env.adjacency}')
-    # [n_states, n_actions, n_shared]
-    np.testing.assert_almost_equal(shared, env.shared[env.state, 0, :])
-    print(f'features:{private.shape}')
+    # [n_states, n_actions, n_phi]
+    np.testing.assert_almost_equal(phi, env.PHI[env.state, 0, :])
+    print(f'features:{varphi.shape}')
 
 

@@ -27,8 +27,6 @@ sys.path.append(Path.cwd().as_posix())
 def softmax(x):
     e_x = np.exp(np.clip(x - np.max(x), a_min=-20, a_max=0))
     return e_x / e_x.sum()
-def replace(x, pos, elem): x[pos] = elem; return x
-
 
 class ActorCritic(object):
 
@@ -40,8 +38,8 @@ class ActorCritic(object):
         self.n_states = env.n_states
         self.n_actions = env.n_actions
         self.n_nodes = env.n_nodes
-        self.n_shared = env.n_shared
-        self.n_private = env.n_private
+        self.n_phi = env.n_phi
+        self.n_varphi = env.n_varphi
         self.seed = env.seed
         assert env.n_actions == 2
 
@@ -49,8 +47,8 @@ class ActorCritic(object):
         self.mu = np.zeros(1)
         self.next_mu = np.zeros(1)
 
-        self.w = np.ones(self.n_shared) * (1 / self.n_shared)
-        self.theta = np.ones((self.n_nodes, self.n_private)) * (1 / self.n_private)
+        self.w = np.ones(self.n_phi) * (1 / self.n_phi)
+        self.theta = np.ones((self.n_nodes, self.n_varphi)) * (1 / self.n_varphi)
         self.reset()
 
     @property 
@@ -69,25 +67,61 @@ class ActorCritic(object):
         np.random.seed(self.seed)
         self.n_steps = 0
 
-    def act(self, private):
-        '''Pick actions'''
+    def act(self, varphi):
+        '''Pick actions
+
+        Parameters:
+        -----------
+        * varphi: [n_actions, n_nodes, n_varphi]
+            Critic features
+
+        Returns:
+        --------
+        * actions: [n_nodes,]
+            Boolean array with agents actions for time t.
+        '''
         choices = np.zeros(self.n_nodes, dtype=np.int32)
         action_set = np.arange(self.n_actions)
         for i in range(self.n_nodes):
-            probs = self.policy(private, i)
+            probs = self.policy(varphi, i)
             choices[i] = np.random.choice(action_set, p=probs)
         return choices
 
     def update_mu(self, rewards):
-        '''Tracks long-term average reward'''
+        '''Tracks long-term mean reward
+
+        Parameters:
+        -----------
+        * rewards: float<n_nodes> 
+            instantaneous rewards.
+        '''
         self.next_mu = (1 - self.alpha) * self.mu + self.alpha * np.mean(rewards)
 
     def update(self, state, actions, reward, next_state, next_actions):
-        # Common knowledge at timestep-t
-        shared, private = state
-        next_shared, next_private = next_state
+        '''Updates actor and critic parameters
 
-        dq = self.grad_q(shared)
+        Parameters:
+        -----------
+        * state: tuple<np.array<n_phi>, np.array<n_actions, n_nodes, n_varphi>>
+            features representing the state where 
+            state[0]: phi represents the state at time t as seen by the critic.
+            state[1]: varphi represents the state at time t as seen by the actor.
+        * actions: np.array<n_nodes>
+            Actions for each agent at time t.
+        * rewards: np.array<n_nodes> 
+            Instantaneous rewards for each of the agents.
+        * next_state: tuple<np.array<n_phi>, np.array<n_actions, n_nodes, n_varphi>>
+            features representing the state where 
+            next_state[0]: phi represents the state at time t+1 as seen by the critic.
+            next_state[1]: varphi represents the state at time t+1 as seen by the actor.
+        * next_actions: tuple(float<>, float<>)
+            Actions for each agent at time t+1.
+        '''
+        # Common knowledge at timestep-t
+        phi, varphi = state
+        next_phi, next_private = next_state
+
+        dq = self.grad_q(phi)
         alpha = self.alpha
         beta = self.beta
         mu = self.mu
@@ -95,83 +129,158 @@ class ActorCritic(object):
         advantages = []
         # 3.1 Compute time-difference delta
         delta = np.mean(reward) - mu + \
-                self.q(next_shared) - self.q(shared)
+                self.q(next_phi) - self.q(phi)
 
         # 3.2 Critic step
-        # [n_shared,]
+        # [n_phi,]
         self.w += alpha * (delta * dq)
 
         # 3.3 Actor step
         for i in range(self.n_nodes):
-            ksi = self.grad_policy(private, actions, i)     # [n_shared]
-            self.theta[i, :] += (beta * delta * ksi) # [n_shared]
+            ksi = self.grad_policy(varphi, actions, i)     # [n_phi]
+            self.theta[i, :] += (beta * delta * ksi) # [n_phi]
 
         self.n_steps += 1
         self.mu = self.next_mu
 
         return advantages, float(delta)
 
-    def q(self, shared):
-        '''Q-function'''
-        return self.w @ shared
+    def q(self, phi):
+        '''Q-function 
 
-    def grad_q(self, shared):
-        '''Gradient of the Q-function '''
-        return shared
+        Parameters:
+        -----------
+        * phi: np.array<n_phi>
+            critic features
 
-    def policy(self, private, i):
-        '''pi(s, a_i)'''
-        # gibbs distribution / Boltzman policies.
-        # [n_private, n_actions]
-        # [n_private] @ [n_private, n_actions] --> [n_actions]
-        x = self.theta[i, :] @ private[:, i, :].T
+        Returns:
+        --------
+        * q: float
+           Q-value 
+        '''
+        return self.w @ phi
+
+    def grad_q(self, phi):
+        '''Gradient of the Q-function 
+
+        Parameters:
+        ----------
+        * phi: np.array<n_phi>
+            Critic features
+
+        Returns:
+        -------
+        * gradient_q: np.array<n_phi>
+        '''
+        return phi
+
+    def policy(self, varphi, i):
+        '''Computes gibbs distribution / Boltzman policies
+
+        Parameters:
+        -----------
+        * varphi: np.array<n_actions, n_nodes, n_varphi>
+            actor features
+
+        * i: integer
+            index of the node on the interval {0,N-1}
+
+        Returns:
+        -------
+        * probabilities: np.array<n_actions>
+            Stochastic policy
+        '''
+        # [n_varphi, n_actions]
+        # [n_varphi] @ [n_varphi, n_actions] --> [n_actions]
+        x = self.theta[i, :] @ varphi[:, i, :].T
         # [n_actions]
         x = softmax(x) 
         return x
 
-    def grad_policy(self, private, actions, i):
+    def grad_policy(self, varphi, actions, i):
+        '''Computes gibbs distribution / Boltzman policies
+
+        Parameters:
+        -----------
+        * varphi: np.array<n_actions, n_nodes, n_varphi>
+            actor features
+
+        * actions: np.array<n_nodes>
+            actions for agents
+
+        * i: integer
+            index of the agent on the interval {0,N-1}
+
+        Returns:
+        -------
+        * grad_log_policy: np.array<n_varphi>
+            Score for policy of agent i.
+        '''
         # [n_actions]
-        probabilities = self.policy(private, i)
-        # FIXME: Broadcast bug.
-        return private[actions[i], i, :] - probabilities @ private[:, i, :]
+        probabilities = self.policy(varphi, i)
+        return varphi[actions[i], i, :] - probabilities @ varphi[:, i, :]
 
-    def get_q(self, shared):
-        return self.q(shared)
+    def get_q(self, phi):
+        '''Advantage agent i and time t
 
-    def get_pi(self, private):
-        return [self.policy(private, i).tolist() for i in range(self.n_nodes)]
+        Parameters:
+        -----------
+        * phi: np.array<n_phi>
+            Critic features
+
+        Returns:
+        -------
+        * q: np.array<n_nodes>
+            Q value
+        '''
+        return self.q(phi)
+
+    def get_pi(self, varphi):
+        '''Computes the global policy
+
+        Parameters:
+        -----------
+        * varphi: np.array<n_actions, n_nodes, n_varphi>
+            Actor features
+
+        Returns:
+        --------
+        * global policy: list<list<n_actions>>
+            List of policies for each agent.
+        '''
+        return [self.policy(varphi, i).tolist() for i in range(self.n_nodes)]
 
 if __name__ == '__main__':
     n_states=3
     n_actions=2
     n_nodes=3
-    n_shared=4
-    n_private=2
+    n_phi=4
+    n_varphi=2
 
     env = Environment(
         n_states=n_states,
         n_actions=n_actions,
         n_nodes=n_nodes,
-        n_shared=n_shared,
-        n_private=n_private
+        n_phi=n_phi,
+        n_varphi=n_varphi
     )
     ac = ActorCritic(env)
 
     first_private = env.get_features()
     actions = ac.act(first_private)
     state = env.get_features(actions)
-    shared, private = state
-    np.testing.assert_almost_equal(private, first_private)
+    phi, varphi = state
+    np.testing.assert_almost_equal(varphi, first_private)
     n_steps = 5
     
     for n_step in range(n_steps):
-        print(f'action_value-function {ac.q(shared)}')
-        grad_q = ac.grad_q(shared)
+        print(f'action_value-function {ac.q(phi)}')
+        grad_q = ac.grad_q(phi)
         print(f'grad_q {grad_q}')
-        np.testing.assert_almost_equal(grad_q, shared)
-        pis = [ac.policy(private, i) for i in range(n_nodes)]
+        np.testing.assert_almost_equal(grad_q, phi)
+        pis = [ac.policy(varphi, i) for i in range(n_nodes)]
         print(f'policies {pis}')
-        next_actions = ac.act(private)
+        next_actions = ac.act(varphi)
         print(f'next_actions {next_actions}')
         env.next_step(actions)
         env.get_features(actions)
@@ -181,4 +290,4 @@ if __name__ == '__main__':
 
     env.next_step(actions)
 
-    ksis = [ac.grad_policy(private, actions, i) for i in range(n_nodes)]
+    ksis = [ac.grad_policy(varphi, actions, i) for i in range(n_nodes)]

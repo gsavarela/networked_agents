@@ -22,15 +22,15 @@ def train(n_steps, n_episodes, seed):
     # n_states = 20
     # n_actions = 2
     # n_nodes = 20
-    # n_shared = 10
-    # n_private = 5
+    # n_phi = 10  # critic features
+    # n_varphi = 5 # actor's features
 
     # worse
     n_states = 20
     n_actions = 2
-    n_nodes = 3
-    n_shared = 10
-    n_private = 5
+    n_nodes = 2
+    n_phi = 10
+    n_varphi = 5
     is_time_variable_graph = True
 
     # Instanciate environment
@@ -38,24 +38,21 @@ def train(n_steps, n_episodes, seed):
         n_states=n_states,
         n_actions=n_actions,
         n_nodes=n_nodes,
-        n_shared=n_shared,
-        n_private=n_private,
+        n_phi=n_phi,
+        n_varphi=n_varphi,
         seed=seed
     )
 
 
     np.random.seed(seed)
     consensus = env.get_consensus()
-    phi_00 = env.shared[0, 0, :] # arbitrary
-    q_2 = env.private[2, ...] # arbitrary
+    phi_00 = env.get_phi([0] * n_nodes, 0) # arbitrary
+    varphi_2 = env.get_varphi(2) # arbitrary
+
     print('Best action for every state')
     print(np.arange(n_states))
-    print(np.argmax(np.average(env.average_rewards, axis=2), axis=1))
-    best_actions = np.argmax(np.average(env.average_rewards, axis=2), axis=1)
-    avg = np.average(env.average_rewards, axis=2)
-    for i in range(n_states):
-        ba = best_actions[i]
-        print(f'{i}:{ba}:{np.round(avg[i, ba], 2)}')
+    print(env.best_actions)
+    print(env.max_team_reward)
 
     results = {}
     for distributed in (True, False):
@@ -75,10 +72,10 @@ def train(n_steps, n_episodes, seed):
             try:
                 while True:
                     if first:
-                        private = next(gen)
-                        actions = agent.act(private) 
-                        shared = env.get_shared(actions)
-                        state = (shared, private)
+                        varphi = next(gen)
+                        actions = agent.act(varphi) 
+                        phi = env.get_phi(actions)
+                        state = (phi, varphi)
                         first = False
 
                     next_state, next_rewards, done = gen.send(actions)
@@ -109,7 +106,7 @@ def train(n_steps, n_episodes, seed):
                     'Q': agents_q_values,
                     'delta': agents_deltas,
                     'mu': agents_mus,
-                    'pi': agent.get_pi(q_2),
+                    'pi': agent.get_pi(varphi_2),
                     'data': deepcopy(env.log)
                 }
     return results
