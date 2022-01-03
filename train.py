@@ -18,7 +18,7 @@ def get_label(distributed):
     return 'distributed' if distributed else 'centralized'
 
 def train(n_steps, n_episodes, seed):
-    # # TODO: Make parse_args
+    # TODO: Make parse_args
     n_states = 20
     n_actions = 2
     n_nodes = 20
@@ -28,10 +28,10 @@ def train(n_steps, n_episodes, seed):
     # Mini problem
     # n_states = 20
     # n_actions = 2
-    # n_nodes = 3
+    # n_nodes = 2
     # n_phi = 10
     # n_varphi = 15
-    is_time_variable_graph = True
+    variable_graph = True
 
     # Instanciate environment
     env = Environment(
@@ -84,7 +84,7 @@ def train(n_steps, n_episodes, seed):
                     next_actions = agent.act(next_state[-1])
                     tr = [state, actions, next_rewards, next_state, next_actions]
                     if distributed:
-                        if is_time_variable_graph:
+                        if variable_graph:
                             tr.append(env.get_consensus())
                         else:
                             tr.append(consensus)

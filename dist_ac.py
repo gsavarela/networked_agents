@@ -192,8 +192,6 @@ class DistributedActorCritic(object):
         ret = 0
         for j, aj in enumerate(range(self.n_actions)):
             _actions = [aj if k == i else ak for k, ak in enumerate(actions)] 
-            if i == 0:
-                print(_actions)
             phi_aj = self.env.get_phi(np.array(_actions))
             ret += probabilities[j] * self.q(phi_aj, i)
         return ret

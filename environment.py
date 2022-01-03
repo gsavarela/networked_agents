@@ -2,9 +2,10 @@
 
     References:
     -----------
-    `Fully Decentralized Multi-Agent Reinforcement Learning with Networked Agents.` ---
+    * `Fully Decentralized Multi-Agent Reinforcement Learning with Networked Agents.` ---
     Zhang, et al. 2018
-    `Policy Evaluation with Temporal Differences: A survey and comparison` --- 
+
+    * `Policy Evaluation with Temporal Differences: A survey and comparison` --- 
     Dann, et al. 2014
 '''
 from operator import itemgetter
@@ -16,11 +17,12 @@ from numpy.random import uniform
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
-from consensus import laplacian_weights_matrix
+# from consensus import laplacian_weights_matrix
+from consensus import metropolis_weights_matrix
 from consensus import adjacency_matrix
 
 # x is a list of zeros and ones.
-def b2d(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
+def bin2dec(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
 
 
 class Environment(object):
@@ -41,34 +43,44 @@ class Environment(object):
         self.n_phi = n_phi
         self.n_varphi = n_varphi
         self.n_edges = 2 * (n_nodes - 1)
+        self.n_action_space = n_actions ** n_nodes 
         self.seed = seed
 
         # Transitions & Shared set of features phi(s,a).
         # n_action_space = np.power(n_actions, n_nodes)
-        n_action_space = np.power(n_actions, n_nodes)
-        probabilities = []
-        phis = [] 
-        average_rewards = []
+        n_dims = n_states * self.n_action_space
+
+        # probabilities = []
+        # phis = [] 
+        # average_rewards = []
         
         np.random.seed(seed)
-        for _ in range(n_action_space):
-            u = uniform(size=(n_states, n_states)) + 1e-5 # ensure ergodicity
-            prob = u / np.sum(u, axis=1, keepdims=True)
-            probabilities.append(prob)
+        # for _ in range(n_action_space):
+        #     u = uniform(size=(n_states, n_states)) + 1e-5 # ensure ergodicity
+        #     prob = u / np.sum(u, axis=1, keepdims=True)
+        #     probabilities.append(prob)
 
-            phi = uniform(size=(n_states, n_phi))
-            phis.append(phi)
+        #     phi = uniform(size=(n_states, n_phi))
+        #     phis.append(phi)
 
-            # 2. Each agent has an individual average reward.
-            average_rewards.append(uniform(low=0, high=4, size=(n_states, n_nodes)).astype(np.float))
+        #     # 2. Each agent has an individual average reward.
+        #     average_rewards.append(uniform(low=0, high=4, size=(n_states, n_nodes)).astype(np.float))
 
         # MDP dynamics [n_states, n_actions, n_state]
-        self.P = np.stack(probabilities, axis=1)
+        # self.P = np.stack(probabilities, axis=1)
+
+        # MDP dynamics [n_states * (n_actions ** n_nodes), n_state]
+        P = uniform(size=(n_dims, n_states))
+        self.P = P / P.sum(axis=-1, keepdims=True)
         # PHI actor features [n_states, n_actions, n_phi]
-        self.PHI = np.stack(phis, axis=1)
+        # self.PHI = np.stack(phis, axis=1)
+        # PHI actor features [n_states * (n_actions ** n_nodes), n_phi]
+        self.PHI = uniform(size=(n_dims, n_phi))
         # Average rewards: [n_states, n_actions, n_nodes]
-        self.R = np.stack(average_rewards, axis=1)
-        # 4. Private set of features q(s, a_i)
+        # self.R = np.stack(average_rewards, axis=1)
+        # Average rewards: [n_states * (n_actions ** n_nodes), n_nodes]
+        self.R = uniform(low=0, high=4, size=(n_dims, n_nodes))
+        # 4. Private set of features var_phi(s, a_i)
         #[n_states, n_actions, n_nodes, n_varphi]
         self.VARPHI = uniform(size=(n_states, n_actions, n_nodes, n_varphi))
 
@@ -93,45 +105,52 @@ class Environment(object):
         return self.get_phi(actions), self.get_varphi()
 
     def get_phi(self, actions, state=None):
-        # [n_states, n_actions, n_phi]
-        if state is not None: return self.PHI[state, b2d(actions), :]
-        return self.PHI[self.state, b2d(actions), :]
+        # [n_states * n_actions ** n_phi, n_phi]
+        if state is None: state = self.state 
+        return self.PHI[self.get_dim(state, actions), :]
 
     def get_varphi(self, state=None):
-        #[n_states, n_actions, n_nodes, n_varphi]
-        if state is not None: return self.VARPHI[state, ...]
-        return self.VARPHI[self.state, ...]
+        #[n_states * n_actions, n_nodes, n_varphi]
+        if state is None: state = self.state
+        return self.VARPHI[state, ...]
 
     def get_rewards(self, actions):
-        #[n_states, n_actions, n_nodes]
-        r = self.R[self.state, b2d(actions), :]
+        #[n_states * n_actions ** n_nodes, n_nodes]
+        r = self.R[self.get_dim(self.state, actions), :] 
         u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
-        return r + u
+        return r + u 
+
+    def get_dim(self, state, actions):
+        return state * self.n_action_space + bin2dec(actions)
 
     # use this for debugging purpose
     @cached_property
     def best_actions(self):
-        return np.argmax(np.average(self.R, axis=2), axis=1)
+        r = self.R.reshape((self.n_states, -1, self.n_nodes))
+        return np.argmax(np.average(r, axis=2), axis=1)
 
     # use this for debugging purpose
     @cached_property
     def max_team_reward(self):
-        avg = np.average(self.R, axis=2)
+        r = self.R.reshape((self.n_states, -1, self.n_nodes))
+        r = np.average(r, axis=2)
+
         ba = self.best_actions
         max_team_reward = []
-        for i in range(self.n_states):
-            max_team_reward.append(float(np.round(avg[i, ba[i]], 2)))
+        for state in range(self.n_states):
+            max_team_reward.append(float(np.round(r[state, ba[state]], 2)))
         return np.array(max_team_reward)
 
     def next_step(self, actions):
-        # [n_states, n_actions, n_state]
-        probs = self.P[self.state, b2d(actions), :]
+        # [n_states * n_actions**n_nodes, n_state]
+        probs = self.P[self.get_dim(self.state, actions), :]
         self.state = np.random.choice(self.n_states, p=probs)
         self.n_step += 1
 
     @property
     def adjacency(self):
-        return self._adjacency(self.n_step)
+        # return self._adjacency(self.n_step)
+        return np.ones((self.n_nodes, self.n_nodes))
 
     @lru_cache(maxsize=1)
     def _adjacency(self, n_step):
@@ -139,7 +158,7 @@ class Environment(object):
 
     def get_consensus(self):
         adj = self.adjacency
-        lwe = laplacian_weights_matrix(adj)
+        lwe = metropolis_weights_matrix(adj)
         return lwe
         
 
@@ -159,10 +178,11 @@ class Environment(object):
 
             self.log['state'].append(self.state)
             self.log['reward'].append(float(np.mean(r)))
-            self.log['actions'].append(b2d(actions))
+            self.log['actions'].append(bin2dec(actions))
             self.log['steps'].append(self.n_step)
             self.next_step(actions)
         return 0 
+
 if __name__ == '__main__':
 
     np.random.seed(42)
@@ -189,13 +209,14 @@ if __name__ == '__main__':
     n_action_schema = 2 ** n_nodes
     print(f'current state: {state}')
     print(env.P.shape) 
-    assert env.P.shape == (n_states, n_action_schema, n_states)
+    assert env.P.shape == (n_states * n_action_schema, n_states)
 
-    print(f'{actions} -> {b2d(list(actions))}')
+    print(f'{actions} -> {bin2dec(list(actions))}')
 
 
+    dim = env.get_dim(env.state, actions)
     print('average reward')
-    print(env.R[agents, state, actions])
+    print(env.R[dim, :])
     print('get_rewards(actions)')
     print(env.get_rewards(actions))
     env.next_step(actions)
@@ -204,7 +225,9 @@ if __name__ == '__main__':
     print(f'Graph-{env.n_step}:')
     print(f'{env.adjacency}')
     # [n_states, n_actions, n_phi]
-    np.testing.assert_almost_equal(phi, env.PHI[env.state, 0, :])
+    np.testing.assert_almost_equal(phi, env.PHI[env.state * env.n_action_space + bin2dec(actions), :])
     print(f'features:{varphi.shape}')
-
-
+    env.state = n_states - 1
+    actions = np.ones(n_nodes, dtype=np.int32)
+    print(env.get_dim(env.state, actions), env.PHI.shape[0])
+    assert env.get_dim(env.state, actions) + 1, env.PHI.shape[0]
