@@ -19,18 +19,18 @@ def get_label(distributed):
 
 def train(n_steps, n_episodes, seed):
     # TODO: Make parse_args
-    n_states = 20
-    n_actions = 2
-    n_nodes = 20
-    n_phi = 10  # critic features
-    n_varphi = 15 # actor's features
-
-    # Mini problem
     # n_states = 20
     # n_actions = 2
-    # n_nodes = 2
-    # n_phi = 10
-    # n_varphi = 15
+    # n_nodes = 20
+    # n_phi = 10  # critic features
+    # n_varphi = 15 # actor's features
+
+    # Mini problem
+    n_states = 20
+    n_actions = 2
+    n_nodes = 2
+    n_phi = 10
+    n_varphi = 5
     variable_graph = True
 
     # Instanciate environment
@@ -55,10 +55,10 @@ def train(n_steps, n_episodes, seed):
     print(env.max_team_reward)
 
     results = {}
-    for distributed in (True, False):
+    for distributed in (False, True):
+
         # system of agents
         agent = get_agent(distributed)(env)
-
         globally_averaged_return = []
         agents_q_values = []
         agents_mus = []
@@ -83,6 +83,7 @@ def train(n_steps, n_episodes, seed):
 
                     next_actions = agent.act(next_state[-1])
                     tr = [state, actions, next_rewards, next_state, next_actions]
+
                     if distributed:
                         if variable_graph:
                             tr.append(env.get_consensus())

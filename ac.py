@@ -25,7 +25,7 @@ sys.path.append(Path.cwd().as_posix())
 
 # Helpful one-liners
 def softmax(x):
-    e_x = np.exp(np.clip(x - np.max(x), a_min=-20, a_max=0))
+    e_x = np.exp(x)
     return e_x / e_x.sum()
 
 class ActorCritic(object):
@@ -81,10 +81,9 @@ class ActorCritic(object):
             Boolean array with agents actions for time t.
         '''
         choices = np.zeros(self.n_nodes, dtype=np.int32)
-        action_set = np.arange(self.n_actions)
         for i in range(self.n_nodes):
             probs = self.policy(varphi, i)
-            choices[i] = np.random.choice(action_set, p=probs)
+            choices[i] = np.random.choice(self.n_actions, p=probs)
         return choices
 
     def update_mu(self, rewards):
@@ -127,7 +126,6 @@ class ActorCritic(object):
         mu = self.mu
         # 3. Loop through agents' decisions.
         advantages = []
-        # 3.1 Compute time-difference delta
         delta = np.mean(reward) - mu + \
                 self.q(next_phi) - self.q(phi)
 
@@ -138,7 +136,7 @@ class ActorCritic(object):
         # 3.3 Actor step
         for i in range(self.n_nodes):
             ksi = self.grad_log_policy(varphi, actions, i)     # [n_phi]
-            self.theta[i, :] += (beta * delta * ksi) # [n_phi]
+            self.theta[i, :] += (beta * delta * ksi)    # [n_phi]
 
         self.n_steps += 1
         self.mu = self.next_mu

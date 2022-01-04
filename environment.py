@@ -24,7 +24,6 @@ from consensus import adjacency_matrix
 # x is a list of zeros and ones.
 def bin2dec(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
 
-
 class Environment(object):
     def __init__(self,
                  n_states=20,
@@ -34,7 +33,6 @@ class Environment(object):
                  n_varphi=5,
                  seed=0):
 
-        # connectivity_ratio = 2 * n_edges / (n_nodes)*(n_nodes - 1) 
         # n_nodes = n_nodes
         # default: 4 / n_nodes <--> n_edges = 2 * (n_nodes - 1)
         self.n_states = n_states
@@ -47,41 +45,21 @@ class Environment(object):
         self.seed = seed
 
         # Transitions & Shared set of features phi(s,a).
-        # n_action_space = np.power(n_actions, n_nodes)
         n_dims = n_states * self.n_action_space
-
-        # probabilities = []
-        # phis = [] 
-        # average_rewards = []
-        
         np.random.seed(seed)
-        # for _ in range(n_action_space):
-        #     u = uniform(size=(n_states, n_states)) + 1e-5 # ensure ergodicity
-        #     prob = u / np.sum(u, axis=1, keepdims=True)
-        #     probabilities.append(prob)
 
-        #     phi = uniform(size=(n_states, n_phi))
-        #     phis.append(phi)
-
-        #     # 2. Each agent has an individual average reward.
-        #     average_rewards.append(uniform(low=0, high=4, size=(n_states, n_nodes)).astype(np.float))
-
-        # MDP dynamics [n_states, n_actions, n_state]
-        # self.P = np.stack(probabilities, axis=1)
-
-        # MDP dynamics [n_states * (n_actions ** n_nodes), n_state]
+        # MDP dynamics [|n_states||n_actions ** n_nodes|, n_state]
         P = uniform(size=(n_dims, n_states))
         self.P = P / P.sum(axis=-1, keepdims=True)
-        # PHI actor features [n_states, n_actions, n_phi]
-        # self.PHI = np.stack(phis, axis=1)
-        # PHI actor features [n_states * (n_actions ** n_nodes), n_phi]
+
+        # PHI actor features [|n_states||n_actions ** n_nodes|, n_phi]
         self.PHI = uniform(size=(n_dims, n_phi))
-        # Average rewards: [n_states, n_actions, n_nodes]
-        # self.R = np.stack(average_rewards, axis=1)
-        # Average rewards: [n_states * (n_actions ** n_nodes), n_nodes]
+
+        # Average Rewards: [|n_states||n_actions ** n_nodes|, n_nodes]
         self.R = uniform(low=0, high=4, size=(n_dims, n_nodes))
-        # 4. Private set of features var_phi(s, a_i)
-        #[n_states, n_actions, n_nodes, n_varphi]
+
+        # Private set of features var_phi(s, a_i)
+        # [n_states, n_actions, n_nodes, n_varphi]
         self.VARPHI = uniform(size=(n_states, n_actions, n_nodes, n_varphi))
 
         # 5. Builds a list with every possible edge. 
@@ -105,17 +83,17 @@ class Environment(object):
         return self.get_phi(actions), self.get_varphi()
 
     def get_phi(self, actions, state=None):
-        # [n_states * n_actions ** n_phi, n_phi]
+        # [|n_states||n_actions ** n_nodes|, n_phi]
         if state is None: state = self.state 
         return self.PHI[self.get_dim(state, actions), :]
 
     def get_varphi(self, state=None):
-        #[n_states * n_actions, n_nodes, n_varphi]
+        # [n_states, n_actions, n_nodes, n_varphi]
         if state is None: state = self.state
         return self.VARPHI[state, ...]
 
     def get_rewards(self, actions):
-        #[n_states * n_actions ** n_nodes, n_nodes]
+        # [|n_states||n_actions ** n_nodes|, n_nodes]
         r = self.R[self.get_dim(self.state, actions), :] 
         u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
         return r + u 
@@ -142,7 +120,6 @@ class Environment(object):
         return np.array(max_team_reward)
 
     def next_step(self, actions):
-        # [n_states * n_actions**n_nodes, n_state]
         probs = self.P[self.get_dim(self.state, actions), :]
         self.state = np.random.choice(self.n_states, p=probs)
         self.n_step += 1
