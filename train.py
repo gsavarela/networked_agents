@@ -7,6 +7,7 @@ import numpy as np
 from tqdm import trange
 
 from environment import Environment
+# from environment import SemiDeterministicEnvironment as Environment
 from dist_ac import DistributedActorCritic
 from ac import ActorCritic
 

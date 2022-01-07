@@ -23,8 +23,18 @@ from consensus import adjacency_matrix
 
 # x is a list of zeros and ones.
 def bin2dec(x): return sum([2**j for j, xx in enumerate(x) if bool(xx)])
+# x numeric represention of action.
+# y number of nodes.
+def dec2str(x, y):
+    z = bin(x)[2:]; return z[::-1]+ '0'*(y - len(z))
+def sumones(x):
+    y = [int(xx == '1') for xx in x];
+    return sum(y) if any(y) else 0
+# simple majority
+def smaj(x): return x / 2 if x % 2 == 0 else (x + 1) / 2
 
 class Environment(object):
+    '''Randomly Generated MDP'''
     def __init__(self,
                  n_states=20,
                  n_actions=2,
@@ -66,8 +76,6 @@ class Environment(object):
         self.edge_list = [(i, j) for i in range(n_nodes - 1) for j in range(i + 1, n_nodes)]
 
         self.log = defaultdict(list)
-        self.log['best_actions'] = self.best_actions.tolist()
-        self.log['best_actions_rewards'] = self.max_team_reward.tolist()
         self.reset()
 
     def reset(self):
@@ -126,7 +134,7 @@ class Environment(object):
 
     @property
     def adjacency(self):
-        # return self._adjacency(self.n_step)
+        return self._adjacency(self.n_step)
         return np.ones((self.n_nodes, self.n_nodes))
 
     @lru_cache(maxsize=1)
@@ -147,12 +155,15 @@ class Environment(object):
             if first:
                 r = 0
                 actions = yield self.get_features()
-                first = False
             else:
                 r = self.get_rewards(actions)
                 actions = yield self.get_features(actions), r, done
 
-
+            if first:
+                # do this one
+                self.log['best_actions'] = self.best_actions.tolist()
+                self.log['best_actions_rewards'] = self.max_team_reward.tolist()
+                first = False
             self.log['state'].append(self.state)
             self.log['reward'].append(float(np.mean(r)))
             self.log['actions'].append(bin2dec(actions))
@@ -160,16 +171,88 @@ class Environment(object):
             self.next_step(actions)
         return 0 
 
+class SemiDeterministicEnvironment(Environment):
+    '''Randomly Generated MDP but easier'''
+    def __init__(self,
+                 n_states=20,
+                 n_actions=2,
+                 n_nodes=20,
+                 n_phi=10,
+                 n_varphi=5,
+                 seed=0):
+
+        super(SemiDeterministicEnvironment, self).__init__(
+            n_states=n_states, 
+            n_actions=n_actions,
+            n_nodes=n_nodes,
+            n_phi=n_phi,
+            n_varphi=n_varphi,
+            seed=seed
+        )
+        # Re-defines the reward.
+        n_dims = self.n_states * self.n_action_space
+        for n_dim in range(n_dims):
+            n_state = n_dim // self.n_action_space
+            n_action = n_dim - n_state * self.n_action_space
+            if n_state == self.n_states - 1:
+                self.R[n_dim, :] = 4
+            else:
+                # Gives higher rewards for selecting 1 on 'lower' states
+                digits = dec2str(n_action, n_nodes) # zeros or ones.
+                for i, digit in enumerate(digits): 
+                    self.R[n_dim, i] = 4 * (n_state - (1 - int(digit == '1'))) / self.n_states
+
+        # Re-defines the transitions.
+        # simple majority threshold
+        maj = smaj(self.n_nodes)
+        for n_dim in range(n_dims):
+
+            n_state = n_dim // self.n_action_space
+            n_action = n_dim - n_state * self.n_action_space
+            n_ones = sumones(dec2str(n_action, self.n_nodes))
+
+            for next_state in range(self.n_states):
+                if n_state == 0:
+                    if next_state == 0:
+                        self.P[n_dim, next_state] = max(float(n_ones < maj), 1e-5)
+                    elif next_state == 1:
+                        self.P[n_dim, next_state] = max(float(n_ones >= maj), 1e-5)
+                    else:
+                        self.P[n_dim, next_state] = 1e-5
+                else:
+                    if next_state == n_state - 1:
+                        self.P[n_dim, next_state] = max(float(n_ones < maj), 1e-5)
+                    elif next_state == n_state:
+                        if n_state == self.n_states - 1:
+                            self.P[n_dim, next_state] = max(float(n_ones >= maj), 1e-5)
+                        else:
+                            self.P[n_dim, next_state] = max(float(n_ones == maj), 1e-5)
+                    elif next_state == n_state + 1:
+                        self.P[n_dim, next_state] = max(float(n_ones > maj), 1e-5)
+                    else:
+                        self.P[n_dim, next_state] = 1e-5
+        self.P = self.P / self.P.sum(axis=-1, keepdims=True)
+        self.log = defaultdict(list)
+
+    @property
+    def adjacency(self):
+        return np.ones((self.n_nodes, self.n_nodes))
+
+    def get_rewards(self, actions):
+        # [|n_states||n_actions ** n_nodes|, n_nodes]
+        r = self.R[self.get_dim(self.state, actions), :] 
+        # u = uniform(low=-0.5, high=0.5, size=self.n_nodes)
+        return r
+
 if __name__ == '__main__':
 
     np.random.seed(42)
-    n_states=10
-    n_actions=2
-    n_nodes=5
-    n_phi=5
-    n_varphi=3
-
-    env = Environment(
+    n_states = 3
+    n_actions = 2
+    n_nodes = 2
+    n_phi = 10
+    n_varphi = 5
+    env = SemiDeterministicEnvironment(
             n_states=n_states,
             n_actions=n_actions,
             n_nodes=n_nodes,
@@ -184,8 +267,10 @@ if __name__ == '__main__':
     actions = np.zeros(n_nodes, dtype=np.int32)
     state = env.state
     n_action_schema = 2 ** n_nodes
+
     print(f'current state: {state}')
     print(env.P.shape) 
+    print(env.P)
     assert env.P.shape == (n_states * n_action_schema, n_states)
 
     print(f'{actions} -> {bin2dec(list(actions))}')
@@ -208,3 +293,4 @@ if __name__ == '__main__':
     actions = np.ones(n_nodes, dtype=np.int32)
     print(env.get_dim(env.state, actions), env.PHI.shape[0])
     assert env.get_dim(env.state, actions) + 1, env.PHI.shape[0]
+
