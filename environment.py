@@ -76,6 +76,13 @@ class Environment(object):
         self.edge_list = [(i, j) for i in range(n_nodes - 1) for j in range(i + 1, n_nodes)]
 
         self.log = defaultdict(list)
+        self.log['n_states'] = n_states
+        self.log['n_actions'] = n_actions
+        self.log['n_nodes'] = n_nodes
+        self.log['n_phi'] = n_phi
+        self.log['n_varphi'] = n_varphi
+        self.log['n_edges'] = 2 * (n_nodes - 1)
+        self.log['seed'] = seed
         self.reset()
 
     def reset(self):
@@ -163,6 +170,8 @@ class Environment(object):
                 # do this one
                 self.log['best_actions'] = self.best_actions.tolist()
                 self.log['best_actions_rewards'] = self.max_team_reward.tolist()
+
+
                 first = False
             self.log['state'].append(self.state)
             self.log['reward'].append(float(np.mean(r)))
@@ -232,7 +241,6 @@ class SemiDeterministicEnvironment(Environment):
                     else:
                         self.P[n_dim, next_state] = 1e-5
         self.P = self.P / self.P.sum(axis=-1, keepdims=True)
-        self.log = defaultdict(list)
 
     @property
     def adjacency(self):

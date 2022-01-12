@@ -52,6 +52,7 @@ class DistributedActorCritic(object):
 
         self.w = np.ones((self.n_agents, self.n_phi)) * (1/ self.n_phi)
         self.theta = np.ones((self.n_agents, self.n_varphi)) * (1/ self.n_varphi)
+        self.log = defaultdict(list)
         self.reset()
 
     @property 
@@ -129,6 +130,12 @@ class DistributedActorCritic(object):
         mu = self.mu
         advantages = []
         deltas = []
+        grad_ws = []
+        grad_thetas = []
+        scores = []
+
+        ws = [self.w.tolist()]
+        thetas = [self.theta.tolist()]
         # 2. Iterate agents on the network.
         for i in range(self.n_agents):
             # 2.1 Compute time-difference delta
@@ -136,22 +143,34 @@ class DistributedActorCritic(object):
                     self.q(next_phi, i) - self.q(phi, i)
 
             # 2.2 Critic step
-            self.w[i, :] += alpha * delta * dq # [n_phi,]
+            grad_w = alpha * delta * dq 
+            self.w[i, :] += grad_w # [n_phi,]
 
             # 3.3 Actor step
             adv = self.advantage(phi, varphi, actions, i)  # [n_varphi,]
             ksi = self.grad_log_policy(varphi, actions, i)     # [n_varphi,]
-            self.theta[i, :] += (beta * adv * ksi) # [n_varphi,]
+            grad_theta = (beta * adv * ksi)
+            self.theta[i, :] += grad_theta # [n_varphi,]
+
+            # Log step
+            grad_ws.append(grad_w.tolist())
+            grad_thetas.append(grad_theta.tolist())
+            scores.append(ksi.tolist())
 
             advantages.append(adv)
             deltas.append(float(delta))
 
         # Consensus step.
         self.w = C @ self.w
+
+        # Log.
+        ws.append(self.w.tolist())
+        thetas.append(self.theta.tolist())
+
         self.n_steps += 1
         self.mu = self.next_mu
-
-        return advantages, deltas
+    
+        return advantages, deltas, ws, grad_ws, thetas, grad_thetas, scores
 
     def q(self, phi, i):
         '''Q-function 
@@ -231,8 +250,9 @@ class DistributedActorCritic(object):
         # [n_varphi] @ [n_varphi, n_actions] --> [n_actions]
         x = self.theta[i, :] @ varphi[:, i, :].T
         # [n_actions]
-        x = softmax(x) 
-        return x
+        z = softmax(x) 
+        
+        return z
 
     def grad_log_policy(self, varphi, actions, i):
         '''Computes gibbs distribution / Boltzman policies

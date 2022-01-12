@@ -80,10 +80,10 @@ class ActorCritic(object):
         * actions: [n_nodes,]
             Boolean array with agents actions for time t.
         '''
-        choices = np.zeros(self.n_nodes, dtype=np.int32)
+        choices = []
         for i in range(self.n_nodes):
             probs = self.policy(varphi, i)
-            choices[i] = np.random.choice(self.n_actions, p=probs)
+            choices.append(int(np.random.choice(self.n_actions, p=probs)))
         return choices
 
     def update_mu(self, rewards):
@@ -124,24 +124,44 @@ class ActorCritic(object):
         alpha = self.alpha
         beta = self.beta
         mu = self.mu
-        # 3. Loop through agents' decisions.
+
+        # Log variables.
         advantages = []
+        deltas = []
+        grad_ws = []
+        grad_thetas = []
+        scores = []
+
+        # Capture before updates.
+        ws = [self.w.tolist()]
+        thetas = [self.theta.tolist()]
+
         delta = np.mean(reward) - mu + \
                 self.q(next_phi) - self.q(phi)
 
         # 3.2 Critic step
         # [n_phi,]
-        self.w += alpha * (delta * dq)
+        grad_w = alpha * delta * dq 
+        self.w += grad_w
 
         # 3.3 Actor step
         for i in range(self.n_nodes):
             ksi = self.grad_log_policy(varphi, actions, i)     # [n_phi]
-            self.theta[i, :] += (beta * delta * ksi)    # [n_phi]
+            grad_theta = (beta * delta * ksi)
+            self.theta[i, :] += grad_theta   # [n_phi]
+
+            grad_thetas.append(grad_theta.tolist())
+            scores.append(ksi.tolist())
+
+        # Log.
+        ws.append(self.w.tolist())
+        grad_ws.append(grad_w.tolist())
+        thetas.append(self.theta.tolist())
 
         self.n_steps += 1
         self.mu = self.next_mu
 
-        return advantages, float(delta)
+        return advantages, float(delta), ws, grad_ws, thetas, grad_thetas, scores
 
     def q(self, phi):
         '''Q-function 
