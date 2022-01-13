@@ -136,6 +136,7 @@ class DistributedActorCritic(object):
 
         ws = [self.w.tolist()]
         thetas = [self.theta.tolist()]
+        wtilde = np.zeros_like(self.w)
         # 2. Iterate agents on the network.
         for i in range(self.n_agents):
             # 2.1 Compute time-difference delta
@@ -144,7 +145,7 @@ class DistributedActorCritic(object):
 
             # 2.2 Critic step
             grad_w = alpha * delta * dq 
-            self.w[i, :] += grad_w # [n_phi,]
+            wtilde[i, :] = self.w[i, :] + grad_w # [n_phi,]
 
             # 3.3 Actor step
             adv = self.advantage(phi, varphi, actions, i)  # [n_varphi,]
@@ -159,9 +160,9 @@ class DistributedActorCritic(object):
 
             advantages.append(adv)
             deltas.append(float(delta))
-
+        import ipdb; ipdb.set_trace()
         # Consensus step.
-        self.w = C @ self.w
+        self.w = C @ wtilde
 
         # Log.
         ws.append(self.w.tolist())
@@ -169,7 +170,6 @@ class DistributedActorCritic(object):
 
         self.n_steps += 1
         self.mu = self.next_mu
-    
         return advantages, deltas, ws, grad_ws, thetas, grad_thetas, scores
 
     def q(self, phi, i):
@@ -208,6 +208,7 @@ class DistributedActorCritic(object):
             value-function with averaged i
         '''
         probabilities = self.policy(varphi, i)
+
         ret = 0
         for j, aj in enumerate(range(self.n_actions)):
             _actions = [aj if k == i else ak for k, ak in enumerate(actions)] 
