@@ -5,9 +5,11 @@ from datetime import datetime
 import multiprocessing
 from multiprocessing.pool import Pool
 
+
 from train import train
 from plots import globally_averaged_plot, q_values_plot, advantages_plot
 from plots import delta_plot, mu_plot, pi_plot, log_plot
+from stats import rel_entropy, ks_test
 
 def fn(args): return train(*args)
 # helps transform a list of dictionaries into a pair of lists
@@ -64,6 +66,11 @@ def main(n_runs, n_processors, n_steps, n_episodes):
 
     centralized_log, decentralized_log = unwrap(results, 'data') 
     log_plot(centralized_log[0], decentralized_log[0], results_path)
+
+    centralized_jp, decentralized_jp = unwrap(results, 'joint_policy') 
+    rel_entropy(centralized_jp[0], decentralized_jp[0])
+    ks_test(centralized_jp[0], decentralized_jp[0])
+    
     return results, str(results_path)
 
 if __name__ == '__main__':

@@ -93,18 +93,15 @@ class Environment(object):
         for key in ('actions', 'steps', 'state', 'reward'):
             if key in self.log: del self.log[key]
 
-    def get_features(self, actions=None):
-        if actions is None: return self.get_varphi()
-        return self.get_phi(actions), self.get_varphi()
+    def get_features(self, state, actions):
+        return self.get_phi(state, actions), self.get_varphi(state)
 
-    def get_phi(self, actions, state=None):
+    def get_phi(self, state, actions):
         # [|n_states||n_actions ** n_nodes|, n_phi]
-        if state is None: state = self.state 
         return self.PHI[self.get_dim(state, actions), :]
 
-    def get_varphi(self, state=None):
+    def get_varphi(self, state):
         # [n_states, n_actions, n_nodes, n_varphi]
-        if state is None: state = self.state
         return self.VARPHI[state, ...]
 
     def get_rewards(self, actions):
@@ -142,7 +139,6 @@ class Environment(object):
     @property
     def adjacency(self):
         return self._adjacency(self.n_step)
-        return np.ones((self.n_nodes, self.n_nodes))
 
     @lru_cache(maxsize=1)
     def _adjacency(self, n_step):
@@ -161,10 +157,10 @@ class Environment(object):
             done = (step == (n_steps -1))
             if first:
                 r = 0
-                actions = yield self.get_features()
+                actions = yield self.state, self.get_varphi(self.state)
             else:
                 r = self.get_rewards(actions)
-                actions = yield self.get_features(actions), r, done
+                actions = yield self.state, r, done
 
             if first:
                 # do this one
@@ -203,13 +199,10 @@ class SemiDeterministicEnvironment(Environment):
         for n_dim in range(n_dims):
             n_state = n_dim // self.n_action_space
             n_action = n_dim - n_state * self.n_action_space
-            if n_state == self.n_states - 1:
-                self.R[n_dim, :] = 4
-            else:
-                # Gives higher rewards for selecting 1 on 'lower' states
-                digits = dec2str(n_action, n_nodes) # zeros or ones.
-                for i, digit in enumerate(digits): 
-                    self.R[n_dim, i] = 4 * (n_state - (1 - int(digit == '1'))) / self.n_states
+            # Gives higher rewards for selecting 1 on 'lower' states
+            digits = dec2str(n_action, n_nodes) # zeros or ones.
+            for i, digit in enumerate(digits): 
+                self.R[n_dim, i] = 4 * ((n_state + 1) - (1 - int(digit == '1'))) / self.n_states
 
         # Re-defines the transitions.
         # simple majority threshold
@@ -230,17 +223,21 @@ class SemiDeterministicEnvironment(Environment):
                         self.P[n_dim, next_state] = 1e-5
                 else:
                     if next_state == n_state - 1:
-                        self.P[n_dim, next_state] = max(float(n_ones < maj), 1e-5)
-                    elif next_state == n_state:
                         if n_state == self.n_states - 1:
-                            self.P[n_dim, next_state] = max(float(n_ones >= maj), 1e-5)
+                            self.P[n_dim, next_state] = max(float(n_ones < maj), 1e-5)
                         else:
-                            self.P[n_dim, next_state] = max(float(n_ones == maj), 1e-5)
+                            self.P[n_dim, next_state] = max(float(n_ones < maj), 1e-5)
+                    elif next_state == n_state and n_state == self.n_states - 1:
+                            self.P[n_dim, next_state] = max(float(n_ones >= maj), 1e-5)
                     elif next_state == n_state + 1:
-                        self.P[n_dim, next_state] = max(float(n_ones > maj), 1e-5)
+                        self.P[n_dim, next_state] = max(float(n_ones >= maj), 1e-5)
                     else:
                         self.P[n_dim, next_state] = 1e-5
         self.P = self.P / self.P.sum(axis=-1, keepdims=True)
+
+        # every agent sees the same thing.
+        # [n_states, n_actions, n_nodes, n_varphi]
+        self.VARPHI = np.tile(uniform(size=(n_states, n_actions, 1, n_varphi)), (1, 1, n_nodes, 1))
 
     @property
     def adjacency(self):

@@ -121,8 +121,8 @@ class DistributedActorCritic(object):
             Actions for each agent at time t+1.
         '''
         # 1. Common knowledge at timestep-t
-        phi, varphi = state
-        next_phi, _ = next_state
+        phi, varphi = self.env.get_features(state, actions)
+        next_phi, _ = self.env.get_features(next_state, next_actions)
 
         dq = self.grad_q(phi)
         alpha = self.alpha
@@ -148,7 +148,7 @@ class DistributedActorCritic(object):
             wtilde[i, :] = self.w[i, :] + grad_w # [n_phi,]
 
             # 3.3 Actor step
-            adv = self.advantage(phi, varphi, actions, i)  # [n_varphi,]
+            adv = self.advantage(phi, varphi, state, actions, i)  # [n_varphi,]
             ksi = self.grad_log_policy(varphi, actions, i)     # [n_varphi,]
             grad_theta = (beta * adv * ksi)
             self.theta[i, :] += grad_theta # [n_varphi,]
@@ -160,7 +160,6 @@ class DistributedActorCritic(object):
 
             advantages.append(adv)
             deltas.append(float(delta))
-        import ipdb; ipdb.set_trace()
         # Consensus step.
         self.w = C @ wtilde
 
@@ -187,7 +186,7 @@ class DistributedActorCritic(object):
         '''
         return self.w[i, :] @ phi
 
-    def v(self, varphi, actions, i):
+    def v(self, varphi, state, actions, i):
         '''Relative value-function
 
         A version of value-function where the effects of i-agent's
@@ -212,7 +211,7 @@ class DistributedActorCritic(object):
         ret = 0
         for j, aj in enumerate(range(self.n_actions)):
             _actions = [aj if k == i else ak for k, ak in enumerate(actions)] 
-            phi_aj = self.env.get_phi(np.array(_actions))
+            phi_aj = self.env.get_phi(state, np.array(_actions))
             ret += probabilities[j] * self.q(phi_aj, i)
         return ret
 
@@ -278,7 +277,7 @@ class DistributedActorCritic(object):
         probabilities = self.policy(varphi, i)
         return varphi[actions[i], i, :] - probabilities @ varphi[:, i, :]
 
-    def advantage(self, phi, varphi, actions, i):
+    def advantage(self, phi, varphi, state, actions, i):
         '''Advantage agent i and time t
 
         The advantage for agent-i evaluates the `goodness` of 
@@ -304,7 +303,7 @@ class DistributedActorCritic(object):
         * advantege f
             Score for policy of agent i.
         '''
-        return self.q(phi, i) - self.v(varphi, actions, i)
+        return self.q(phi, i) - self.v(varphi, state, actions, i)
 
     def get_q(self, phi):
         '''Q-function for each agent-i
@@ -322,11 +321,7 @@ class DistributedActorCritic(object):
         return [self.q(phi,  i) for i in range(self.n_agents)]
 
     def get_pi(self, varphi):
-        '''Advantage agent i and time t
-
-        The advantage for agent-i evaluates the `goodness` of 
-        taking action a_i.
-
+        '''The policy agent i at time-t and state given by varphi.
 
         Parameters:
         -----------

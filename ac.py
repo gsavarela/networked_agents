@@ -117,8 +117,8 @@ class ActorCritic(object):
             Actions for each agent at time t+1.
         '''
         # Common knowledge at timestep-t
-        phi, varphi = state
-        next_phi, next_private = next_state
+        phi, varphi = self.env.get_features(state, actions)
+        next_phi, _ = self.env.get_features(next_state, next_actions)
 
         dq = self.grad_q(phi)
         alpha = self.alpha
@@ -142,7 +142,7 @@ class ActorCritic(object):
         # 3.2 Critic step
         # [n_phi,]
         grad_w = alpha * delta * dq 
-        self.w += grad_w
+        next_w = self.w + grad_w
 
         # 3.3 Actor step
         for i in range(self.n_nodes):
@@ -160,6 +160,7 @@ class ActorCritic(object):
 
         self.n_steps += 1
         self.mu = self.next_mu
+        self.w = next_w
 
         return advantages, float(delta), ws, grad_ws, thetas, grad_thetas, scores
 

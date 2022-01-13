@@ -1,32 +1,64 @@
+import json
+from pathlib import Path
 
-def logger(state, actions, rewards, dac, env, td, data):
-    # transitions.
-    data['rewards'].append(rewards.tolist())
-    data['actions'].append(actions.tolist())
-    data['actions2'].append(env.to_index(actions))
-    data['shared'].append(state[0].tolist())
-    data['private'].append(state[-1].tolist())
-    data['hidden'].append(int(env.state))
+import numpy as np 
+import pandas as pd
 
-    # Hyperparameters.
-    data['alpha'].append(dac.alpha)
-    data['beta'].append(dac.beta)
+def flatten(items, ignore_types=(str, bytes)):
+    """
 
-    # Objective variables.
-    data['mu'].append(dac.mu.tolist())
-    data['w'].append(dac.w.tolist())
-    data['theta'].append(dac.theta.tolist())
+    Usage:
+    -----
+    > items = [1, 2, [3, 4, [5, 6], 7], 8]
 
-    # n_step
-    data['n_step'].append(dac.n_steps)
+    > # Produces 1 2 3 4 5 6 7 8
+    > for x in flatten(items):
+    >         print(x)
 
-    # Time-difference variables.
-    data['grad_Q'].append(td['grad_Q'])
-    data['Qt'].append(td['Qt'])
-    data['Vt'].append(td['Vt'])
-    data['Qt+1'].append(td['Qt+1'])
-    data['delta'].append(td['delta'])
-    data['w_local'].append(td['w_local'])
-    data['adv'].append(td['adv'])
-    data['ksi'].append(td['ksi'])
-    data['next_mu'].append(td['next_mu'])
+    Ref:
+    ----
+
+    David Beazley. `Python Cookbook.'
+    """
+    for x in items:
+        if isinstance(x, Iterable) and not isinstance(x, ignore_types):
+            yield from flatten(x)
+        else:
+            yield x
+
+# Creates a pandas-dataframe with transitions.
+def transitions_df(results, agent_type='distributed'):
+    if not agent_type in ('centralized', 'distributed'):
+        raise KeyError('agent_type must be in `centralized` or `distributed`')
+
+    if len(results) > 1:
+        print('Processing only the first epoch')
+
+    res = results[0][agent_type]
+    n_states = res['data']['n_states']
+    n_actions = res['data']['n_actions']
+    n_nodes = res['data']['n_nodes']
+    n_varphi = res['data']['n_varphi']
+    n_phi = res['data']['n_phi']
+
+    first = True
+    for tr in res['transitions']:
+        for key, val in tr.items():
+            import ipdb; ipdb.set_trace()
+
+
+
+if __name__ == '__main__':
+    dir_path = Path('data/results/20220112193533.025359')
+    results_path = dir_path / 'results.json'
+
+    with results_path.open('r') as f: res = json.load(f)
+    df_tr = transitions_df(res)
+
+    
+
+
+    
+
+
+

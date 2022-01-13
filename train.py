@@ -50,21 +50,32 @@ def rec(root, ind):
     # do nothing and move forward.
     return rec(root, ind + 1)
 
+def get_joint_policy(agent, env):
+    '''Computes the joint_policy of agents jointly voting 1.'''
+    # State vs agents.
+    joint_policies = [] 
+    for i in range(env.n_states):
+        policy = agent.get_pi(env.get_varphi(i))
+        joint_policies.append([votes[-1] for votes in policy])
+    return joint_policies 
+
+
 def train(n_steps, n_episodes, seed):
     # TODO: Make parse_args
     # n_states = 20
     # n_actions = 2
     # n_nodes = 20
     # n_phi = 10  # critic features
-    # n_varphi = 15 # actor's features
+    # n_varphi = 5 # actor's features
 
     # Mini problem
-    n_states = 3
+    n_states = 20
     n_actions = 2
     n_nodes = 2
     n_phi = 10
     n_varphi = 5
     variable_graph = True
+    seed = 0
 
     # Instanciate environment
     env = Environment(
@@ -76,10 +87,9 @@ def train(n_steps, n_episodes, seed):
         seed=seed
     )
 
-
     np.random.seed(seed)
     consensus = env.get_consensus()
-    phi_00 = env.get_phi([0] * n_nodes, 0) # arbitrary
+    phi_00 = env.get_phi(0, [0] * n_nodes) # arbitrary
     varphi_2 = env.get_varphi(2) # arbitrary
 
     print('Best action for every state')
@@ -107,16 +117,16 @@ def train(n_steps, n_episodes, seed):
             try:
                 while True:
                     if first:
-                        varphi = next(gen)
+                        state, varphi = next(gen)
                         actions = agent.act(varphi) 
-                        phi = env.get_phi(actions)
-                        state = (phi, varphi)
+                        phi = env.get_phi(state, actions)
+                        features = (phi, varphi)
                         first = False
 
                     next_state, next_rewards, done = gen.send(actions)
                     agent.update_mu(next_rewards)
 
-                    next_actions = agent.act(next_state[-1])
+                    next_actions = agent.act(env.get_varphi(next_state))
                     tr = [state, actions, next_rewards, next_state, next_actions]
 
                     if distributed:
@@ -150,6 +160,7 @@ def train(n_steps, n_episodes, seed):
                     'data': deepcopy(env.log),
                     'transitions': agents_transitions,
                     'logs': agents_logs,
+                    'joint_policy': get_joint_policy(agent, env)
                 }
     return results
 
